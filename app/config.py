@@ -12,3 +12,8 @@ class Settings(BaseSettings):
 
     environment: Literal["dev", "test", "prod"] = "dev"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    # Internal server (health, metrics). Bind to loopback by default; in Docker
+    # bind to 0.0.0.0 inside the container and never publish the port.
+    internal_server_enabled: bool = True
+    internal_host: str = "127.0.0.1"
+    internal_port: int = 8081

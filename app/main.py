@@ -4,12 +4,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.config import Settings
+from app.internal import run_internal_server
 from app.log import configure_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    yield
+    async with run_internal_server(app.state.settings):
+        yield
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

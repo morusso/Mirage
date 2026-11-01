@@ -10,7 +10,7 @@ from app.main import create_app
 
 @pytest.fixture
 async def client() -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app(Settings(environment="test"))
+    app = create_app(Settings(environment="test", internal_server_enabled=False))
     transport = ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),
