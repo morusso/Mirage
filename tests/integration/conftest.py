@@ -1,11 +1,18 @@
+import asyncio
 from collections.abc import AsyncIterator, Iterator
 from uuid import uuid4
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from docker.errors import DockerException
 from redis.asyncio import Redis
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.community.redis import RedisContainer
+
+from domain.db import create_engine, create_session_factory
 
 
 @pytest.fixture(scope="session")
@@ -57,3 +64,19 @@ def postgres_url() -> Iterator[str]:
         yield container.get_connection_url()
     finally:
         container.stop()
+
+
+@pytest.fixture
+async def sessions(postgres_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Session factory on a migrated database; the requests table is emptied afterwards."""
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", postgres_url)
+    # env.py calls asyncio.run(), which cannot nest inside the test's running loop.
+    await asyncio.to_thread(command.upgrade, config, "head")
+    engine = create_engine(postgres_url)
+    try:
+        yield create_session_factory(engine)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text("TRUNCATE requests"))
+        await engine.dispose()
