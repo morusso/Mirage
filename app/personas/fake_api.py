@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, TypeAdapter
 
+from app.engine.templates import render_template
 from app.personas.base import PersonaConfig, persona_dependency
-from app.personas.fake_jwt import issue_token
+from app.personas.fake_jwt import FAKE_SECRET, issue_token
 
 FAKE_API_PERSONA = PersonaConfig(name="fake_api", server="nginx/1.24.0", powered_by="Express")
 
@@ -56,6 +57,20 @@ USERS: list[User] = TypeAdapter(list[User]).validate_python(
 )
 _USERS_BY_ID = {u.id: u for u in USERS}
 _USERS_BY_EMAIL = {u.email: u for u in USERS}
+
+# Bait secrets. Obviously invented and deliberately NOT shaped like real provider keys
+# (AWS, Stripe, ...) so secret scanners do not flag this repository. JWT_SECRET matches
+# the key used to sign tokens in /auth/login so the leaked file is internally consistent.
+# TODO(stage 3): replace with per-world canary tokens.
+ENV_BAIT_CONTEXT = {
+    "host": "shopnest.store",
+    "db_host": "10.0.4.12",
+    "db_password": "Sh0pN3st-Pr0d#2024",
+    "redis_host": "10.0.4.13",
+    "redis_password": "r3d1s-c4che-9f2a",
+    "jwt_secret": FAKE_SECRET.decode(),
+    "smtp_password": "m41l-r3lay-7c1d",
+}
 
 SWAGGER_SPEC: dict[str, Any] = json.loads((FIXTURES_DIR / "swagger.json").read_text())
 
@@ -162,6 +177,15 @@ async def login(request: Request) -> Response:
 async def swagger_json() -> Response:
     # Bait: an "accidentally" exposed API description that invites targeted probing.
     return json_response(SWAGGER_SPEC)
+
+
+@root_router.get("/.env")
+async def dotenv() -> Response:
+    # Bait: a classic misconfiguration, served like a static dotfile (no known extension).
+    return Response(
+        content=render_template("fake_api/dotenv.env", **ENV_BAIT_CONTEXT),
+        headers={"content-type": "application/octet-stream"},
+    )
 
 
 # Routes are copied on include, so this must come after all route definitions.
