@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 from abc import ABC, abstractmethod
 from typing import cast
 
@@ -23,6 +24,11 @@ class StreamConsumer(ABC):
 
     Several instances can share a group under different ``consumer`` names; any of
     them also picks up entries abandoned by a crashed peer.
+
+    Poison events: retried entries are handled one at a time, so a bad event cannot
+    drag healthy neighbours down with it. After ``max_deliveries`` deliveries an
+    entry is moved to the dead-letter stream (``<stream>:dead`` by default) and
+    acknowledged, so it stops blocking the group but is never silently lost.
     """
 
     def __init__(
@@ -35,6 +41,9 @@ class StreamConsumer(ABC):
         batch_size: int = 100,
         block_ms: int = 1000,
         min_idle_ms: int = 30_000,
+        max_deliveries: int = 5,
+        dead_letter_stream: str | None = None,
+        dead_letter_maxlen: int = 100_000,
     ) -> None:
         self.redis = redis
         self.stream = stream
@@ -43,6 +52,9 @@ class StreamConsumer(ABC):
         self.batch_size = batch_size
         self.block_ms = block_ms
         self.min_idle_ms = min_idle_ms
+        self.max_deliveries = max_deliveries
+        self.dead_letter_stream = dead_letter_stream or f"{stream}:dead"
+        self.dead_letter_maxlen = dead_letter_maxlen
         self._stopping = asyncio.Event()
 
     @abstractmethod
@@ -58,7 +70,7 @@ class StreamConsumer(ABC):
         logger.info("consumer_started", stream=self.stream, group=self.group)
         while not self._stopping.is_set():
             try:
-                await self._process(await self._claim_stale())
+                await self._retry(await self._claim_stale())
                 await self._process(await self._read_new())
             except (RedisError, OSError) as exc:
                 logger.error("consumer_redis_error", stream=self.stream, error=type(exc).__name__)
@@ -81,6 +93,9 @@ class StreamConsumer(ABC):
             start_id="0-0",
             count=self.batch_size,
         )
+        deleted = result[2] if len(result) > 2 else []
+        if deleted:
+            logger.error("consumer_entries_lost", stream=self.stream, count=len(deleted))
         return _entries(result[1])
 
     async def _read_new(self) -> list[StreamEntry]:
@@ -113,6 +128,66 @@ class StreamConsumer(ABC):
             )
             return
         await self.redis.xack(self.stream, self.group, *(entry_id for entry_id, _ in entries))
+
+    async def _retry(self, entries: list[StreamEntry]) -> None:
+        """Handle reclaimed entries one by one, dead-lettering those that keep failing."""
+        for entry in entries:
+            entry_id = entry[0]
+            deliveries = await self._deliveries(entry_id)
+            if deliveries > self.max_deliveries:
+                # Delivered too often without an outcome (e.g. the worker crashes on it).
+                await self._dead_letter(entry, deliveries, "max_deliveries_exceeded")
+                continue
+            try:
+                await self.handle([entry])
+            except Exception as exc:
+                logger.error(
+                    "consumer_handler_failed",
+                    stream=self.stream,
+                    batch=1,
+                    deliveries=deliveries,
+                    error=type(exc).__name__,
+                )
+                if deliveries >= self.max_deliveries:
+                    await self._dead_letter(entry, deliveries, type(exc).__name__)
+                continue
+            await self.redis.xack(self.stream, self.group, entry_id)
+
+    async def _deliveries(self, entry_id: str) -> int:
+        rows = cast(
+            "list[dict[str, int | str]]",
+            await self.redis.xpending_range(self.stream, self.group, entry_id, entry_id, 1),
+        )
+        return int(rows[0]["times_delivered"]) if rows else 0
+
+    async def _dead_letter(self, entry: StreamEntry, deliveries: int, reason: str) -> None:
+        """Copy the entry to the dead-letter stream, then ack it.
+
+        If the XADD fails the entry stays pending and is tried again; a crash between
+        XADD and XACK can duplicate it in the dead-letter stream, never lose it.
+        """
+        entry_id, fields = entry
+        await self.redis.xadd(
+            self.dead_letter_stream,
+            {
+                "original_id": entry_id,
+                "stream": self.stream,
+                "group": self.group,
+                "deliveries": str(deliveries),
+                "reason": reason,
+                "fields": json.dumps(fields),
+            },
+            maxlen=self.dead_letter_maxlen,
+            approximate=True,
+        )
+        await self.redis.xack(self.stream, self.group, entry_id)
+        logger.error(
+            "consumer_dead_lettered",
+            stream=self.stream,
+            entry_id=entry_id,
+            deliveries=deliveries,
+            reason=reason,
+        )
 
     async def _sleep(self, seconds: float) -> None:
         """Sleep that ends early on stop()."""
