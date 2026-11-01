@@ -47,7 +47,7 @@ class CapturedRequest(BaseModel):
     tokens_used: int | None = Field(default=None, ge=0)
 
     def with_response(
-        self, *, tier: int, status: int, latency_ms: int, tokens_used: int = 0
+        self, *, tier: int, status: int | None, latency_ms: int, tokens_used: int = 0
     ) -> Self:
         return self.model_copy(
             update={

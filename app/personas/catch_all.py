@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Response
 
-from app.personas.base import DEFAULT_PERSONA, persona_dependency
+from app.personas.base import DEFAULT_PERSONA, PersonaConfig, persona_dependency
 from app.personas.errors import nginx_404_page
 
-CATCH_ALL_PERSONA = DEFAULT_PERSONA
+CATCH_ALL_PERSONA = PersonaConfig(name="catch_all", server=DEFAULT_PERSONA.server)
 
 router = APIRouter(dependencies=[Depends(persona_dependency(CATCH_ALL_PERSONA))])
 

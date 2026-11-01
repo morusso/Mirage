@@ -96,3 +96,5 @@ async def test_request_through_the_app_lands_in_the_stream(
     assert event.body_sha256 == hashlib.sha256(body).hexdigest()
     assert dict(event.headers)["user-agent"] == "integration-test"
     assert event.world_id.startswith("w_")
+    assert (event.persona, event.status, event.tier) == ("fake_api", 401, 0)
+    assert event.latency_ms is not None

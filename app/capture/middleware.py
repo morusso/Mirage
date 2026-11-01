@@ -1,4 +1,5 @@
 import hashlib
+import time
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -7,10 +8,15 @@ from ipaddress import IPv4Address, IPv6Address, ip_address
 from app.asgi_types import ASGIApp, Message, Receive, Scope, Send
 from app.capture.client_ip import IPNetwork, resolve_client_ip
 from app.capture.fingerprint import fingerprint_v1
+from app.personas.base import PERSONA_SCOPE_KEY, PersonaConfig
 from domain.captured_request import CapturedRequest
 
 MAX_BODY_EXCERPT_BYTES = 1024 * 1024
 MAX_BODY_READ_BYTES = 32 * 1024 * 1024
+
+# The response engine reports how a request was answered through the ASGI scope.
+TIER_SCOPE_KEY = "mirage.tier"
+TOKENS_SCOPE_KEY = "mirage.tokens_used"
 
 Sink = Callable[[CapturedRequest], Awaitable[None]]
 
@@ -139,10 +145,12 @@ def _build(scope: Scope, body: _Body, trusted_proxies: tuple[IPNetwork, ...]) ->
 
 
 class CaptureMiddleware:
-    """Records every HTTP request as a CapturedRequest before the app sees it.
+    """Records every HTTP request as one CapturedRequest event.
 
     The body is read here (the catch-all never reads it), hashed in full and kept
-    up to a limit, then replayed to the downstream app.
+    up to a limit, then replayed to the downstream app. The event is published once
+    the response is done, completed with status, latency, tier and persona. It is
+    published from ``finally`` so requests that crash the app are still recorded.
     """
 
     def __init__(
@@ -166,5 +174,32 @@ class CaptureMiddleware:
             return
 
         body = await _read_body(receive, self.max_body_excerpt, self.max_body_read)
-        await self.sink(_build(scope, body, self.trusted_proxies))
-        await self.app(scope, _replay(body, receive), send)
+        captured = _build(scope, body, self.trusted_proxies)
+
+        # Latency is measured from here, so slow clients uploading a body do not inflate it.
+        started = time.perf_counter()
+        status: int | None = None
+
+        async def send_and_note_status(message: Message) -> None:
+            nonlocal status
+            if message["type"] == "http.response.start":
+                status = message["status"]
+            await send(message)
+
+        try:
+            await self.app(scope, _replay(body, receive), send_and_note_status)
+        except Exception:
+            if status is None:
+                status = 500
+            raise
+        finally:
+            persona = scope.get(PERSONA_SCOPE_KEY)
+            completed = captured.model_copy(
+                update={"persona": persona.name if isinstance(persona, PersonaConfig) else None}
+            ).with_response(
+                tier=scope.get(TIER_SCOPE_KEY, 0),
+                status=status,
+                latency_ms=round((time.perf_counter() - started) * 1000),
+                tokens_used=scope.get(TOKENS_SCOPE_KEY, 0),
+            )
+            await self.sink(completed)

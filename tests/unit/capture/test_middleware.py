@@ -1,9 +1,13 @@
+import asyncio
 import hashlib
 from ipaddress import ip_network
 from typing import Any
 
+import pytest
+
 from app.asgi_types import Message, Receive, Scope, Send
 from app.capture.middleware import CaptureMiddleware
+from app.personas.base import PERSONA_SCOPE_KEY, PersonaConfig
 from domain.captured_request import CapturedRequest
 
 
@@ -31,6 +35,12 @@ class _Harness:
         self.events: list[CapturedRequest] = []
         self.order: list[str] = []
         self.app_messages: list[Message] = []
+        self.sent: list[Message] = []
+        self.status = 200
+        self.raises: Exception | None = None
+        self.send_response = True
+        self.scope_updates: dict[str, Any] = {}
+        self.app_delay_s = 0.0
         self.max_excerpt = max_excerpt
         self.max_read = max_read
 
@@ -46,6 +56,13 @@ class _Harness:
             self.app_messages.append(message)
             if message["type"] == "http.disconnect" or not message.get("more_body", False):
                 break
+        scope.update(self.scope_updates)
+        await asyncio.sleep(self.app_delay_s)
+        if self.raises:
+            raise self.raises
+        if self.send_response:
+            await send({"type": "http.response.start", "status": self.status, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
 
     async def run(self, scope: Scope, messages: list[Message]) -> None:
         queue = list(messages)
@@ -53,8 +70,8 @@ class _Harness:
         async def receive() -> Message:
             return queue.pop(0) if queue else {"type": "http.disconnect"}
 
-        async def send(message: Message) -> None:  # pragma: no cover - app sends nothing
-            raise AssertionError(message)
+        async def send(message: Message) -> None:
+            self.sent.append(message)
 
         mw = CaptureMiddleware(
             self._app,
@@ -96,12 +113,93 @@ async def test_captures_request_metadata() -> None:
     assert e.body_truncated is False
 
 
-async def test_event_is_recorded_before_the_app_runs() -> None:
+async def test_event_is_published_after_the_response() -> None:
     h = _Harness()
 
     await h.run(_scope(), [_body(b"x")])
 
-    assert h.order == ["sink", "app"]
+    assert h.order == ["app", "sink"]
+    assert [m["type"] for m in h.sent] == ["http.response.start", "http.response.body"]
+
+
+async def test_response_metadata_is_recorded() -> None:
+    h = _Harness()
+    h.status = 418
+    h.app_delay_s = 0.02
+
+    await h.run(_scope(), [_body(b"")])
+
+    e = h.event
+    assert e.status == 418
+    assert e.latency_ms is not None and e.latency_ms >= 20
+    assert (e.tier, e.tokens_used) == (0, 0)
+
+
+async def test_tier_and_tokens_are_read_from_scope() -> None:
+    h = _Harness()
+    h.scope_updates = {"mirage.tier": 1, "mirage.tokens_used": 180}
+
+    await h.run(_scope(), [_body(b"")])
+
+    assert (h.event.tier, h.event.tokens_used) == (1, 180)
+
+
+async def test_persona_name_is_recorded() -> None:
+    h = _Harness()
+    h.scope_updates = {PERSONA_SCOPE_KEY: PersonaConfig(name="fake_api", server="nginx")}
+
+    await h.run(_scope(), [_body(b"")])
+
+    assert h.event.persona == "fake_api"
+
+
+async def test_persona_is_none_when_no_router_claimed_the_request() -> None:
+    h = _Harness()
+
+    await h.run(_scope(), [_body(b"")])
+
+    assert h.event.persona is None
+
+
+async def test_crashing_app_is_recorded_as_500_and_error_propagates() -> None:
+    h = _Harness()
+    h.raises = RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await h.run(_scope(), [_body(b"")])
+
+    assert h.event.status == 500
+    assert h.order == ["app", "sink"]
+
+
+async def test_crash_after_response_started_keeps_the_sent_status() -> None:
+    h = _Harness()
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        raise RuntimeError("late")
+
+    mw = CaptureMiddleware(app, h._sink)
+
+    async def receive() -> Message:
+        return _body(b"")
+
+    async def send(message: Message) -> None:
+        return None
+
+    with pytest.raises(RuntimeError):
+        await mw(_scope(), receive, send)
+
+    assert h.event.status == 200
+
+
+async def test_response_that_never_starts_has_no_status() -> None:
+    h = _Harness()
+    h.send_response = False
+
+    await h.run(_scope(), [_body(b"")])
+
+    assert h.event.status is None
 
 
 async def test_raw_path_is_kept_without_decoding() -> None:
@@ -187,7 +285,7 @@ async def test_invalid_client_host_does_not_break_capture() -> None:
     await h.run(_scope(client=("testclient", 50000)), [_body(b"")])
 
     assert str(h.event.ip) == "0.0.0.0"  # noqa: S104
-    assert h.order == ["sink", "app"]
+    assert h.order == ["app", "sink"]
 
 
 async def test_ipv6_client_is_captured() -> None:
