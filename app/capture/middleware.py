@@ -3,10 +3,10 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from ipaddress import IPv4Address, IPv6Address, ip_address
-from uuid import uuid4
 
 from app.asgi_types import ASGIApp, Message, Receive, Scope, Send
 from app.capture.client_ip import IPNetwork, resolve_client_ip
+from app.capture.fingerprint import fingerprint_v1
 from domain.captured_request import CapturedRequest
 
 MAX_BODY_EXCERPT_BYTES = 1024 * 1024
@@ -110,13 +110,21 @@ def _client(
     return ip, client[1] if ip == peer else None
 
 
+def _user_agent(scope: Scope) -> str | None:
+    for key, value in scope.get("headers", []):
+        if key.lower() == b"user-agent":
+            return _text(value)
+    return None
+
+
 def _build(scope: Scope, body: _Body, trusted_proxies: tuple[IPNetwork, ...]) -> CapturedRequest:
     ip, port = _client(scope, trusted_proxies)
+    fingerprint = fingerprint_v1(ip, _user_agent(scope))
     raw_path: bytes = scope.get("raw_path") or scope["path"].encode()
     return CapturedRequest(
         ts=datetime.now(UTC),
-        session_id=uuid4(),
-        world_id="unassigned",
+        session_id=fingerprint.session_id,
+        world_id=fingerprint.world_id,
         ip=ip,
         port=port,
         method=scope["method"],

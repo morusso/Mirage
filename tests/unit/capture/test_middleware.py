@@ -240,3 +240,29 @@ async def test_forwarded_for_is_ignored_when_no_proxy_is_trusted() -> None:
     await h.run(_scope(client=("10.0.0.2", 40000), headers=headers), [_body(b"")])
 
     assert str(h.event.ip) == "10.0.0.2"
+
+
+async def test_identity_comes_from_ip_and_user_agent() -> None:
+    h1, h2, h3 = _Harness(), _Harness(), _Harness()
+    ua = [(b"user-agent", b"curl/8.5.0")]
+
+    await h1.run(_scope(headers=ua), [_body(b"")])
+    await h2.run(_scope(headers=ua, path="/other", raw_path=b"/other"), [_body(b"")])
+    await h3.run(_scope(headers=[(b"user-agent", b"sqlmap/1.8")]), [_body(b"")])
+
+    assert h1.event.world_id.startswith("w_")
+    assert (h1.event.world_id, h1.event.session_id) == (h2.event.world_id, h2.event.session_id)
+    assert h1.event.world_id != h3.event.world_id
+
+
+async def test_identity_uses_the_real_client_behind_a_trusted_proxy() -> None:
+    direct, proxied = _Harness(trusted=True), _Harness(trusted=True)
+    ua = (b"user-agent", b"curl/8.5.0")
+
+    await direct.run(_scope(client=("203.0.113.5", 1), headers=[ua]), [_body(b"")])
+    await proxied.run(
+        _scope(client=("10.0.0.2", 2), headers=[ua, (b"x-forwarded-for", b"203.0.113.5")]),
+        [_body(b"")],
+    )
+
+    assert direct.event.world_id == proxied.event.world_id
