@@ -1,0 +1,97 @@
+# Run from the repository root:
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+name: mirage
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  image: mirage:dev
+  restart: unless-stopped
+  environment: &app-env
+    MIRAGE_ENVIRONMENT: ${MIRAGE_ENVIRONMENT:-prod}
+    MIRAGE_LOG_LEVEL: ${MIRAGE_LOG_LEVEL:-INFO}
+    MIRAGE_REDIS_URL: redis://redis:6379/0
+    MIRAGE_DATABASE_URL: postgresql+asyncpg://mirage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/mirage
+  networks: [backend]
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # AOF keeps queued events across a Redis restart (goal: no event loss).
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mirage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: mirage
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mirage -d mirage"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  # One-shot: applies Alembic migrations, then exits. Everything that touches the
+  # database waits for it.
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    <<: *app
+    environment:
+      <<: *app-env
+      # The internal server (health) listens inside the container only; its port is
+      # never published.
+      MIRAGE_INTERNAL_HOST: 0.0.0.0
+    # Loopback only for now; a reverse proxy takes over the public side next.
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request as u; u.urlopen('http://127.0.0.1:8081/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  persister:
+    <<: *app
+    command: ["python", "-m", "workers.persister"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+networks:
+  backend:
+
+volumes:
+  redis-data:
+  postgres-data:
