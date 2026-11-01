@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.config import Settings
 from app.internal import run_internal_server
 from app.log import configure_logging
+from app.personas.base import PersonaHeadersMiddleware
 
 
 @asynccontextmanager
@@ -24,5 +25,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+    app.add_middleware(PersonaHeadersMiddleware)
     app.state.settings = settings
     return app
