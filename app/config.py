@@ -25,3 +25,8 @@ class Settings(BaseSettings):
     trusted_proxies: list[IPv4Network | IPv6Network] = []
 
     redis_url: str = "redis://localhost:6379/0"
+
+    capture_stream: str = "mirage:events"
+    # Approximate cap (XADD MAXLEN ~) so a stalled consumer cannot fill Redis memory.
+    capture_stream_maxlen: int = 1_000_000
+    capture_publish_timeout_s: float = 1.0
