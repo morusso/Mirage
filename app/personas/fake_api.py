@@ -57,11 +57,10 @@ USERS: list[User] = TypeAdapter(list[User]).validate_python(
 _USERS_BY_ID = {u.id: u for u in USERS}
 _USERS_BY_EMAIL = {u.email: u for u in USERS}
 
-router = APIRouter(
-    prefix="/api/v1",
-    dependencies=[Depends(persona_dependency(FAKE_API_PERSONA))],
-    include_in_schema=False,
-)
+SWAGGER_SPEC: dict[str, Any] = json.loads((FIXTURES_DIR / "swagger.json").read_text())
+
+api_router = APIRouter(prefix="/api/v1", include_in_schema=False)
+root_router = APIRouter(include_in_schema=False)
 
 
 def json_response(content: Any, status_code: int = 200) -> Response:
@@ -87,7 +86,7 @@ def _int_param(raw: str | None, default: int, *, minimum: int, maximum: int | No
     return min(value, maximum) if maximum is not None else value
 
 
-@router.get("/products")
+@api_router.get("/products")
 async def list_products(request: Request) -> Response:
     page = _int_param(request.query_params.get("page"), 1, minimum=1)
     limit = _int_param(
@@ -103,7 +102,7 @@ async def list_products(request: Request) -> Response:
     )
 
 
-@router.get("/products/{product_id}")
+@api_router.get("/products/{product_id}")
 async def get_product(product_id: str) -> Response:
     product = _PRODUCTS_BY_ID.get(int(product_id)) if product_id.isdecimal() else None
     if product is None:
@@ -111,7 +110,7 @@ async def get_product(product_id: str) -> Response:
     return json_response({"data": product.model_dump()})
 
 
-@router.get("/users")
+@api_router.get("/users")
 async def list_users() -> Response:
     # Bait: the collection looks protected, which invites probing of /users/{id}.
     response = json_response({"error": "Unauthorized", "message": "Authentication required"}, 401)
@@ -119,7 +118,7 @@ async def list_users() -> Response:
     return response
 
 
-@router.get("/users/{user_id}")
+@api_router.get("/users/{user_id}")
 async def get_user(user_id: str) -> Response:
     # Bait (IDOR): intentionally no authentication or ownership check.
     user = _USERS_BY_ID.get(int(user_id)) if user_id.isdecimal() else None
@@ -128,7 +127,7 @@ async def get_user(user_id: str) -> Response:
     return json_response({"data": user.model_dump()})
 
 
-@router.post("/auth/login")
+@api_router.post("/auth/login")
 async def login(request: Request) -> Response:
     try:
         body = json.loads(await request.body())
@@ -157,3 +156,15 @@ async def login(request: Request) -> Response:
             "user": {"id": user.id, "email": user.email, "role": user.role},
         }
     )
+
+
+@root_router.get("/swagger.json")
+async def swagger_json() -> Response:
+    # Bait: an "accidentally" exposed API description that invites targeted probing.
+    return json_response(SWAGGER_SPEC)
+
+
+# Routes are copied on include, so this must come after all route definitions.
+router = APIRouter(dependencies=[Depends(persona_dependency(FAKE_API_PERSONA))])
+router.include_router(api_router)
+router.include_router(root_router)
