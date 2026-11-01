@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import signal
 from abc import ABC, abstractmethod
 from typing import cast
 
@@ -193,6 +194,14 @@ class StreamConsumer(ABC):
         """Sleep that ends early on stop()."""
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(self._stopping.wait(), timeout=seconds)
+
+
+async def run_until_signalled(consumer: StreamConsumer) -> None:
+    """Run a consumer until SIGTERM/SIGINT, then let it finish the batch in flight."""
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, consumer.stop)
+    await consumer.run()
 
 
 def _entries(raw: list[tuple[str, dict[str, str] | None]]) -> list[StreamEntry]:
