@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "name": "Wireless Mouse",
+    "sku": "SKU-1007",
+    "category": "electronics",
+    "price": 19.99,
+    "currency": "EUR",
+    "stock": 240,
+    "created_at": "2024-02-11T09:03:00Z"
+  },
+  {
+    "id": 2,
+    "name": "Mechanical Keyboard",
+    "sku": "SKU-1014",
+    "category": "electronics",
+    "price": 89.9,
+    "currency": "EUR",
+    "stock": 75,
+    "created_at": "2024-03-12T09:06:00Z"
+  },
+  {
+    "id": 3,
+    "name": "USB-C Hub 7-in-1",
+    "sku": "SKU-1021",
+    "category": "electronics",
+    "price": 39.5,
+    "currency": "EUR",
+    "stock": 130,
+    "created_at": "2024-04-13T09:09:00Z"
+  },
+  {
+    "id": 4,
+    "name": "27\" 4K Monitor",
+    "sku": "SKU-1028",
+    "category": "electronics",
+    "price": 329.0,
+    "currency": "EUR",
+    "stock": 22,
+    "created_at": "2024-05-14T09:12:00Z"
+  },
+  {
+    "id": 5,
+    "name": "Noise Cancelling Headphones",
+    "sku": "SKU-1035",
+    "category": "audio",
+    "price": 149.0,
+    "currency": "EUR",
+    "stock": 58,
+    "created_at": "2024-06-15T09:15:00Z"
+  },
+  {
+    "id": 6,
+    "name": "Bluetooth Speaker",
+    "sku": "SKU-1042",
+    "category": "audio",
+    "price": 49.99,
+    "currency": "EUR",
+    "stock": 97,
+    "created_at": "2024-07-16T09:18:00Z"
+  },
+  {
+    "id": 7,
+    "name": "Running Shoes",
+    "sku": "SKU-1049",
+    "category": "apparel",
+    "price": 79.0,
+    "currency": "EUR",
+    "stock": 310,
+    "created_at": "2024-08-17T09:21:00Z"
+  },
+  {
+    "id": 8,
+    "name": "Cotton T-Shirt",
+    "sku": "SKU-1056",
+    "category": "apparel",
+    "price": 14.5,
+    "currency": "EUR",
+    "stock": 820,
+    "created_at": "2024-09-18T09:24:00Z"
+  },
+  {
+    "id": 9,
+    "name": "Water Bottle 750ml",
+    "sku": "SKU-1063",
+    "category": "outdoor",
+    "price": 12.0,
+    "currency": "EUR",
+    "stock": 505,
+    "created_at": "2024-01-19T09:27:00Z"
+  },
+  {
+    "id": 10,
+    "name": "Yoga Mat",
+    "sku": "SKU-1070",
+    "category": "fitness",
+    "price": 24.9,
+    "currency": "EUR",
+    "stock": 164,
+    "created_at": "2024-02-20T09:30:00Z"
+  },
+  {
+    "id": 11,
+    "name": "Desk Lamp LED",
+    "sku": "SKU-1077",
+    "category": "home",
+    "price": 34.0,
+    "currency": "EUR",
+    "stock": 88,
+    "created_at": "2024-03-21T09:33:00Z"
+  },
+  {
+    "id": 12,
+    "name": "Ceramic Coffee Mug",
+    "sku": "SKU-1084",
+    "category": "home",
+    "price": 8.5,
+    "currency": "EUR",
+    "stock": 640,
+    "created_at": "2024-04-22T09:36:00Z"
+  }
+]

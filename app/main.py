@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from app.config import Settings
 from app.internal import run_internal_server
 from app.log import configure_logging
-from app.personas import catch_all
+from app.personas import catch_all, fake_api
 from app.personas.base import PersonaHeadersMiddleware
 
 
@@ -27,6 +27,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=None,
     )
     app.add_middleware(PersonaHeadersMiddleware)
+    app.include_router(fake_api.router)
     # Must stay last: it matches every path not claimed by a more specific router.
     app.include_router(catch_all.router)
     app.state.settings = settings
