@@ -11,8 +11,11 @@ package = false
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.1",
     "pre-commit>=4.7.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1",
     "ruff>=0.17.3",
 ]
 
@@ -45,3 +48,7 @@ strict = true
 warn_unreachable = true
 # Legacy PyCharm scaffold, removed when app/main.py lands.
 exclude = ["^main\\.py$"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
