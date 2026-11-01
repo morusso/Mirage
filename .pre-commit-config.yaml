@@ -26,4 +26,3 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        exclude: ^main\.py$  # legacy scaffold, removed with app/main.py

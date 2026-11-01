@@ -1,23 +1,19 @@
-from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
-from typing import Any
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest
 from httpx import ASGITransport
 
-Scope = MutableMapping[str, Any]
-Message = MutableMapping[str, Any]
-Receive = Callable[[], Awaitable[Message]]
-Send = Callable[[Message], Awaitable[None]]
-
-
-async def _placeholder_app(scope: Scope, receive: Receive, send: Send) -> None:
-    await send({"type": "http.response.start", "status": 200, "headers": []})
-    await send({"type": "http.response.body", "body": b"ok"})
+from app.config import Settings
+from app.main import create_app
 
 
 @pytest.fixture
 async def client() -> AsyncIterator[httpx.AsyncClient]:
-    transport = ASGITransport(app=_placeholder_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    app = create_app(Settings(environment="test"))
+    transport = ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://test") as c,
+    ):
         yield c

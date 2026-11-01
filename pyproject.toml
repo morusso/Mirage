@@ -5,7 +5,11 @@ description = "Adaptive AI-driven honeypot API."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.162.0",
+    "httptools>=0.9.0",
     "pydantic-settings>=2.16.2",
+    "uvicorn>=0.54.0",
+    "uvloop>=0.23.0",
 ]
 
 [tool.uv]
@@ -48,8 +52,6 @@ select = [
 python_version = "3.12"
 strict = true
 warn_unreachable = true
-# Legacy PyCharm scaffold, removed when app/main.py lands.
-exclude = ["^main\\.py$"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
