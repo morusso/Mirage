@@ -28,6 +28,23 @@ async def test_upgrade_head_creates_version_table(postgres_url: str) -> None:
     assert found == "alembic_version"
 
 
+async def test_requests_is_hypertable_partitioned_by_ts(postgres_url: str) -> None:
+    await asyncio.to_thread(command.upgrade, _alembic_config(postgres_url), "head")
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.connect() as conn:
+            dimension = await conn.scalar(
+                text(
+                    "SELECT column_name FROM timescaledb_information.dimensions "
+                    "WHERE hypertable_name = 'requests'"
+                )
+            )
+    finally:
+        await engine.dispose()
+    assert dimension == "ts"
+
+
 async def test_requests_table_roundtrip(postgres_url: str) -> None:
     config = _alembic_config(postgres_url)
     await asyncio.to_thread(command.upgrade, config, "head")
