@@ -1,5 +1,8 @@
+from typing import Any
+
 import httpx
 import pytest
+from redis.asyncio import Redis
 
 from app.config import Settings
 from app.main import create_app
@@ -18,3 +21,36 @@ async def test_framework_docs_are_not_exposed(client: httpx.AsyncClient, path: s
     response = await client.get(path)
 
     assert response.status_code == 404
+
+
+async def test_lifespan_provides_redis_client_and_closes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[bool] = []
+    original = Redis.aclose
+
+    async def spy(self: Redis, *args: Any, **kwargs: Any) -> None:
+        closed.append(True)
+        await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Redis, "aclose", spy)
+    app = create_app(Settings(environment="test", internal_server_enabled=False))
+
+    async with app.router.lifespan_context(app):
+        assert isinstance(app.state.redis, Redis)
+        assert closed == []
+
+    assert closed == [True]
+
+
+async def test_redis_client_uses_configured_url() -> None:
+    settings = Settings(
+        environment="test",
+        internal_server_enabled=False,
+        redis_url="redis://cache.internal:6380/3",
+    )
+    app = create_app(settings)
+
+    async with app.router.lifespan_context(app):
+        kwargs = app.state.redis.connection_pool.connection_kwargs
+        assert (kwargs["host"], kwargs["port"], kwargs["db"]) == ("cache.internal", 6380, 3)

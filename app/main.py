@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from redis.asyncio import Redis
 
 from app.config import Settings
 from app.internal import run_internal_server
@@ -12,8 +13,15 @@ from app.personas.base import PersonaHeadersMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    async with run_internal_server(app.state.settings):
-        yield
+    settings: Settings = app.state.settings
+    # Connects lazily, so the app starts even if Redis is briefly unavailable.
+    redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    app.state.redis = redis
+    try:
+        async with run_internal_server(settings):
+            yield
+    finally:
+        await redis.aclose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

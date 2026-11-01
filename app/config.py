@@ -23,3 +23,5 @@ class Settings(BaseSettings):
     # Empty by default: trust nobody and use the socket peer address.
     # Env example: MIRAGE_TRUSTED_PROXIES='["172.16.0.0/12"]'
     trusted_proxies: list[IPv4Network | IPv6Network] = []
+
+    redis_url: str = "redis://localhost:6379/0"
