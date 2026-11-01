@@ -1,4 +1,5 @@
 import hashlib
+from ipaddress import ip_network
 from typing import Any
 
 from app.asgi_types import Message, Receive, Scope, Send
@@ -23,7 +24,10 @@ def _scope(**overrides: Any) -> Scope:
 class _Harness:
     """Runs the middleware with a scripted request and records what happens."""
 
-    def __init__(self, *, max_excerpt: int = 1024, max_read: int = 1024 * 1024) -> None:
+    def __init__(
+        self, *, max_excerpt: int = 1024, max_read: int = 1024 * 1024, trusted: bool = False
+    ) -> None:
+        self.trusted = [ip_network("10.0.0.0/8")] if trusted else []
         self.events: list[CapturedRequest] = []
         self.order: list[str] = []
         self.app_messages: list[Message] = []
@@ -53,7 +57,11 @@ class _Harness:
             raise AssertionError(message)
 
         mw = CaptureMiddleware(
-            self._app, self._sink, max_body_excerpt=self.max_excerpt, max_body_read=self.max_read
+            self._app,
+            self._sink,
+            max_body_excerpt=self.max_excerpt,
+            max_body_read=self.max_read,
+            trusted_proxies=self.trusted,
         )
         await mw(scope, receive, send)
 
@@ -204,3 +212,31 @@ async def test_non_http_scopes_pass_through_untouched() -> None:
 
     assert h.events == []
     assert h.order == ["app"]
+
+
+async def test_forwarded_for_is_used_behind_a_trusted_proxy() -> None:
+    h = _Harness(trusted=True)
+    headers = [(b"x-forwarded-for", b"6.6.6.6"), (b"x-forwarded-for", b"203.0.113.5")]
+
+    await h.run(_scope(client=("10.0.0.2", 40000), headers=headers), [_body(b"")])
+
+    assert str(h.event.ip) == "203.0.113.5"
+    assert h.event.port is None
+
+
+async def test_forwarded_for_is_ignored_from_untrusted_peer() -> None:
+    h = _Harness(trusted=True)
+    headers = [(b"x-forwarded-for", b"6.6.6.6")]
+
+    await h.run(_scope(client=("198.51.100.9", 40000), headers=headers), [_body(b"")])
+
+    assert (str(h.event.ip), h.event.port) == ("198.51.100.9", 40000)
+
+
+async def test_forwarded_for_is_ignored_when_no_proxy_is_trusted() -> None:
+    h = _Harness()
+    headers = [(b"x-forwarded-for", b"6.6.6.6")]
+
+    await h.run(_scope(client=("10.0.0.2", 40000), headers=headers), [_body(b"")])
+
+    assert str(h.event.ip) == "10.0.0.2"

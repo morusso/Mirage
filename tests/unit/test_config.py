@@ -39,3 +39,15 @@ def test_rejects_invalid_log_level(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_trusted_proxies_default_to_none() -> None:
+    assert Settings().trusted_proxies == []
+
+
+def test_trusted_proxies_are_parsed_from_json_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MIRAGE_TRUSTED_PROXIES", '["172.16.0.0/12", "fd00::/8"]')
+
+    networks = [str(n) for n in Settings().trusted_proxies]
+
+    assert networks == ["172.16.0.0/12", "fd00::/8"]

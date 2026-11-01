@@ -1,11 +1,12 @@
 import hashlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from ipaddress import IPv4Address, IPv6Address, ip_address
 from uuid import uuid4
 
 from app.asgi_types import ASGIApp, Message, Receive, Scope, Send
+from app.capture.client_ip import IPNetwork, resolve_client_ip
 from domain.captured_request import CapturedRequest
 
 MAX_BODY_EXCERPT_BYTES = 1024 * 1024
@@ -86,19 +87,31 @@ def _replay(body: _Body, receive: Receive) -> Receive:
 _UNKNOWN_IP = IPv4Address("0.0.0.0")  # noqa: S104 - "unknown" marker, not a bind
 
 
-def _client(scope: Scope) -> tuple[IPv4Address | IPv6Address, int | None]:
-    """Peer address from the ASGI scope; never raises (capture must not break requests)."""
+def _client(
+    scope: Scope, trusted_proxies: tuple[IPNetwork, ...]
+) -> tuple[IPv4Address | IPv6Address, int | None]:
+    """Client address and port; never raises (capture must not break requests).
+
+    Behind a trusted proxy the real client comes from X-Forwarded-For and its
+    source port is unknown.
+    """
     client = scope.get("client")
     if not client:
         return _UNKNOWN_IP, None
     try:
-        return ip_address(client[0]), client[1]
+        peer = ip_address(client[0])
     except ValueError:
         return _UNKNOWN_IP, None
 
+    forwarded = ",".join(
+        _text(v) for k, v in scope.get("headers", []) if k.lower() == b"x-forwarded-for"
+    )
+    ip = resolve_client_ip(peer, forwarded or None, trusted_proxies)
+    return ip, client[1] if ip == peer else None
 
-def _build(scope: Scope, body: _Body) -> CapturedRequest:
-    ip, port = _client(scope)
+
+def _build(scope: Scope, body: _Body, trusted_proxies: tuple[IPNetwork, ...]) -> CapturedRequest:
+    ip, port = _client(scope, trusted_proxies)
     raw_path: bytes = scope.get("raw_path") or scope["path"].encode()
     return CapturedRequest(
         ts=datetime.now(UTC),
@@ -131,9 +144,11 @@ class CaptureMiddleware:
         *,
         max_body_excerpt: int = MAX_BODY_EXCERPT_BYTES,
         max_body_read: int = MAX_BODY_READ_BYTES,
+        trusted_proxies: Iterable[IPNetwork] = (),
     ) -> None:
         self.app = app
         self.sink = sink
+        self.trusted_proxies = tuple(trusted_proxies)
         self.max_body_excerpt = max_body_excerpt
         self.max_body_read = max_body_read
 
@@ -143,5 +158,5 @@ class CaptureMiddleware:
             return
 
         body = await _read_body(receive, self.max_body_excerpt, self.max_body_read)
-        await self.sink(_build(scope, body))
+        await self.sink(_build(scope, body, self.trusted_proxies))
         await self.app(scope, _replay(body, receive), send)
