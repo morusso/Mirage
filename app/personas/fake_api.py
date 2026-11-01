@@ -26,10 +26,28 @@ class Product(BaseModel):
     created_at: str
 
 
+class User(BaseModel):
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+    role: str
+    phone: str
+    city: str
+    country: str
+    created_at: str
+    last_login: str
+
+
 PRODUCTS: list[Product] = TypeAdapter(list[Product]).validate_python(
     json.loads((FIXTURES_DIR / "products.json").read_text())
 )
 _PRODUCTS_BY_ID = {p.id: p for p in PRODUCTS}
+
+USERS: list[User] = TypeAdapter(list[User]).validate_python(
+    json.loads((FIXTURES_DIR / "users.json").read_text())
+)
+_USERS_BY_ID = {u.id: u for u in USERS}
 
 router = APIRouter(
     prefix="/api/v1",
@@ -83,3 +101,20 @@ async def get_product(product_id: str) -> Response:
     if product is None:
         return json_response({"error": "Not Found", "message": "Product not found"}, 404)
     return json_response({"data": product.model_dump()})
+
+
+@router.get("/users")
+async def list_users() -> Response:
+    # Bait: the collection looks protected, which invites probing of /users/{id}.
+    response = json_response({"error": "Unauthorized", "message": "Authentication required"}, 401)
+    response.headers["www-authenticate"] = "Bearer"
+    return response
+
+
+@router.get("/users/{user_id}")
+async def get_user(user_id: str) -> Response:
+    # Bait (IDOR): intentionally no authentication or ownership check.
+    user = _USERS_BY_ID.get(int(user_id)) if user_id.isdecimal() else None
+    if user is None:
+        return json_response({"error": "Not Found", "message": "User not found"}, 404)
+    return json_response({"data": user.model_dump()})

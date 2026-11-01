@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "email": "olivia.bennett@example.com",
+    "first_name": "Olivia",
+    "last_name": "Bennett",
+    "role": "admin",
+    "phone": "+49 30 55500113",
+    "city": "London",
+    "country": "GB",
+    "created_at": "2023-02-06T08:07:00Z",
+    "last_login": "2024-11-11T17:11:00Z"
+  },
+  {
+    "id": 2,
+    "email": "liam.schneider@example.com",
+    "first_name": "Liam",
+    "last_name": "Schneider",
+    "role": "customer",
+    "phone": "+49 30 55500126",
+    "city": "Berlin",
+    "country": "DE",
+    "created_at": "2023-03-07T08:14:00Z",
+    "last_login": "2024-12-12T17:22:00Z"
+  },
+  {
+    "id": 3,
+    "email": "emma.dubois@example.com",
+    "first_name": "Emma",
+    "last_name": "Dubois",
+    "role": "customer",
+    "phone": "+49 30 55500139",
+    "city": "Lyon",
+    "country": "FR",
+    "created_at": "2023-04-08T08:21:00Z",
+    "last_login": "2024-10-13T17:33:00Z"
+  },
+  {
+    "id": 4,
+    "email": "noah.kowalski@example.com",
+    "first_name": "Noah",
+    "last_name": "Kowalski",
+    "role": "customer",
+    "phone": "+49 30 55500152",
+    "city": "Warsaw",
+    "country": "PL",
+    "created_at": "2023-05-09T08:28:00Z",
+    "last_login": "2024-11-14T17:44:00Z"
+  },
+  {
+    "id": 5,
+    "email": "ava.rossi@example.com",
+    "first_name": "Ava",
+    "last_name": "Rossi",
+    "role": "customer",
+    "phone": "+49 30 55500165",
+    "city": "Milan",
+    "country": "IT",
+    "created_at": "2023-06-10T08:35:00Z",
+    "last_login": "2024-12-15T17:55:00Z"
+  },
+  {
+    "id": 6,
+    "email": "lucas.janssen@example.com",
+    "first_name": "Lucas",
+    "last_name": "Janssen",
+    "role": "customer",
+    "phone": "+49 30 55500178",
+    "city": "Utrecht",
+    "country": "NL",
+    "created_at": "2023-07-11T08:42:00Z",
+    "last_login": "2024-10-16T17:06:00Z"
+  },
+  {
+    "id": 7,
+    "email": "mia.andersson@example.com",
+    "first_name": "Mia",
+    "last_name": "Andersson",
+    "role": "customer",
+    "phone": "+49 30 55500191",
+    "city": "Gothenburg",
+    "country": "SE",
+    "created_at": "2023-08-12T08:49:00Z",
+    "last_login": "2024-11-17T17:17:00Z"
+  },
+  {
+    "id": 8,
+    "email": "ethan.novak@example.com",
+    "first_name": "Ethan",
+    "last_name": "Novak",
+    "role": "support",
+    "phone": "+49 30 55500204",
+    "city": "Prague",
+    "country": "CZ",
+    "created_at": "2023-09-13T08:56:00Z",
+    "last_login": "2024-12-18T17:28:00Z"
+  },
+  {
+    "id": 9,
+    "email": "sofia.garcia@example.com",
+    "first_name": "Sofia",
+    "last_name": "Garcia",
+    "role": "customer",
+    "phone": "+49 30 55500217",
+    "city": "Valencia",
+    "country": "ES",
+    "created_at": "2023-01-14T08:03:00Z",
+    "last_login": "2024-10-19T17:39:00Z"
+  },
+  {
+    "id": 10,
+    "email": "jakob.hofer@example.com",
+    "first_name": "Jakob",
+    "last_name": "Hofer",
+    "role": "customer",
+    "phone": "+49 30 55500230",
+    "city": "Vienna",
+    "country": "AT",
+    "created_at": "2023-02-15T08:10:00Z",
+    "last_login": "2024-11-20T17:50:00Z"
+  }
+]
