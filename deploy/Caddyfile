@@ -1,0 +1,41 @@
+# TLS terminates here. For a real domain Caddy obtains and renews a Let's Encrypt
+# certificate on its own (ports 80 and 443 must be reachable); for `localhost` it
+# issues a local test certificate.
+{
+	# Admin API stays off: nothing needs it and it is one more thing to expose.
+	admin off
+
+	servers {
+		# No HTTP/3: UDP 443 is not published, and the alt-svc advertisement is a
+		# Caddy tell.
+		protocols h1 h2
+	}
+}
+
+# Explicit HTTP site instead of Caddy's automatic redirect: the automatic one
+# answers with `Server: Caddy`.
+http://{$MIRAGE_DOMAIN} {
+	header -Server
+	redir https://{host}{uri} permanent
+}
+
+{$MIRAGE_DOMAIN} {
+	# Caddy discards any client-supplied X-Forwarded-For and sets its own, which is
+	# what the app trusts (MIRAGE_TRUSTED_PROXIES covers only the edge network).
+	reverse_proxy app:8080 {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 15s
+		}
+	}
+
+	request_body {
+		max_size 10MB
+	}
+
+	# Caddy adds `Via: 1.1 Caddy` to proxied responses; strip it on the way out.
+	header -Via
+
+	# No `header -Server` here: that would also delete the persona's own Server
+	# header coming from the app.
+}
