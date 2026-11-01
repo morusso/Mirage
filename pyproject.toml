@@ -26,6 +26,7 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1",
     "ruff>=0.17.3",
+    "testcontainers[redis]>=4.15.0",
 ]
 
 [tool.ruff]
@@ -60,3 +61,8 @@ warn_unreachable = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = ["integration: needs Docker (testcontainers)"]
+
+[[tool.mypy.overrides]]
+module = ["docker.*"]
+ignore_missing_imports = true
