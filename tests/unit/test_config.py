@@ -51,3 +51,12 @@ def test_trusted_proxies_are_parsed_from_json_env(monkeypatch: pytest.MonkeyPatc
     networks = [str(n) for n in Settings().trusted_proxies]
 
     assert networks == ["172.16.0.0/12", "fd00::/8"]
+
+
+def test_database_url_is_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MIRAGE_DATABASE_URL", "postgresql+asyncpg://u:s3cret@db/mirage")
+
+    settings = Settings()
+
+    assert settings.database_url.get_secret_value().endswith("@db/mirage")
+    assert "s3cret" not in repr(settings)

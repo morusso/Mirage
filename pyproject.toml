@@ -5,11 +5,13 @@ description = "Adaptive AI-driven honeypot API."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "asyncpg>=0.32.0",
     "fastapi>=0.162.0",
     "httptools>=0.9.0",
     "jinja2>=3.1.6",
     "pydantic-settings>=2.16.2",
     "redis>=8.1.0",
+    "sqlalchemy[asyncio]>=2.1.6",
     "structlog>=26.1.0",
     "uvicorn>=0.54.0",
     "uvloop>=0.23.0",
@@ -26,7 +28,7 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1",
     "ruff>=0.17.3",
-    "testcontainers[redis]>=4.15.0",
+    "testcontainers[postgres,redis]>=4.15.0",
 ]
 
 [tool.ruff]

@@ -1,6 +1,7 @@
 from ipaddress import IPv4Network, IPv6Network
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,3 +31,6 @@ class Settings(BaseSettings):
     # Approximate cap (XADD MAXLEN ~) so a stalled consumer cannot fill Redis memory.
     capture_stream_maxlen: int = 1_000_000
     capture_publish_timeout_s: float = 1.0
+
+    # Used by workers and the analytics API; the request path never touches Postgres.
+    database_url: SecretStr = SecretStr("postgresql+asyncpg://mirage:mirage@localhost:5432/mirage")

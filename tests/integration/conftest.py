@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from docker.errors import DockerException
 from redis.asyncio import Redis
+from testcontainers.community.postgres import PostgresContainer
 from testcontainers.community.redis import RedisContainer
 
 
@@ -36,3 +37,23 @@ async def redis(redis_url: str) -> AsyncIterator[Redis]:
         yield client
     finally:
         await client.aclose()
+
+
+@pytest.fixture(scope="session")
+def postgres_url() -> Iterator[str]:
+    """asyncpg URL of a throwaway TimescaleDB (PostgreSQL 16) started once per session."""
+    try:
+        container = PostgresContainer(
+            "timescale/timescaledb:latest-pg16",
+            username="mirage",
+            password="mirage",
+            dbname="mirage",
+            driver="asyncpg",
+        )
+        container.start()
+    except DockerException as exc:
+        pytest.skip(f"Docker is not available: {exc}")
+    try:
+        yield container.get_connection_url()
+    finally:
+        container.stop()
