@@ -7,12 +7,19 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, TypeAdapter
 
 from app.personas.base import PersonaConfig, persona_dependency
+from app.personas.fake_jwt import issue_token
 
 FAKE_API_PERSONA = PersonaConfig(name="fake_api", server="nginx/1.24.0", powered_by="Express")
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DEFAULT_PAGE_SIZE = 10
 MAX_PAGE_SIZE = 50
+TOKEN_TTL_S = 3600
+
+# Passwords commonly found in credential-stuffing lists; anything else is rejected.
+WEAK_PASSWORDS = frozenset(
+    {"password", "password1", "123456", "12345678", "qwerty", "letmein", "admin", "admin123"}
+)
 
 
 class Product(BaseModel):
@@ -48,6 +55,7 @@ USERS: list[User] = TypeAdapter(list[User]).validate_python(
     json.loads((FIXTURES_DIR / "users.json").read_text())
 )
 _USERS_BY_ID = {u.id: u for u in USERS}
+_USERS_BY_EMAIL = {u.email: u for u in USERS}
 
 router = APIRouter(
     prefix="/api/v1",
@@ -118,3 +126,34 @@ async def get_user(user_id: str) -> Response:
     if user is None:
         return json_response({"error": "Not Found", "message": "User not found"}, 404)
     return json_response({"data": user.model_dump()})
+
+
+@router.post("/auth/login")
+async def login(request: Request) -> Response:
+    try:
+        body = json.loads(await request.body())
+    except ValueError:
+        body = None
+    email = body.get("email") if isinstance(body, dict) else None
+    password = body.get("password") if isinstance(body, dict) else None
+    if not isinstance(email, str) or not isinstance(password, str) or not email or not password:
+        return json_response(
+            {"error": "Bad Request", "message": "Email and password are required"}, 400
+        )
+
+    user = _USERS_BY_EMAIL.get(email.lower())
+    if user is None or password not in WEAK_PASSWORDS:
+        # Same response for unknown email and wrong password (no user enumeration here).
+        return json_response({"error": "Unauthorized", "message": "Invalid credentials"}, 401)
+
+    token = issue_token(
+        {"sub": str(user.id), "email": user.email, "role": user.role}, ttl_s=TOKEN_TTL_S
+    )
+    return json_response(
+        {
+            "token": token,
+            "token_type": "Bearer",
+            "expires_in": TOKEN_TTL_S,
+            "user": {"id": user.id, "email": user.email, "role": user.role},
+        }
+    )
