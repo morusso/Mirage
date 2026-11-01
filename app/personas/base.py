@@ -1,14 +1,9 @@
-from collections.abc import Awaitable, Callable, MutableMapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
 
 from fastapi import Request
 
-Scope = MutableMapping[str, Any]
-Message = MutableMapping[str, Any]
-Receive = Callable[[], Awaitable[Message]]
-Send = Callable[[Message], Awaitable[None]]
-ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
+from app.asgi_types import ASGIApp, Message, Receive, Scope, Send
 
 PERSONA_SCOPE_KEY = "mirage.persona"
 
