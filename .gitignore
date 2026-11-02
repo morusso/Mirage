@@ -113,3 +113,7 @@ out/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Test fixtures live in tests/data (the rule above is for local data dumps).
+!tests/data/
+!tests/data/**

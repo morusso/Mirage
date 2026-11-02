@@ -1,4 +1,5 @@
 from ipaddress import IPv4Network, IPv6Network
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr
@@ -31,6 +32,10 @@ class Settings(BaseSettings):
     # Approximate cap (XADD MAXLEN ~) so a stalled consumer cannot fill Redis memory.
     capture_stream_maxlen: int = 1_000_000
     capture_publish_timeout_s: float = 1.0
+
+    # MaxMind GeoLite2-City database (.mmdb). Not shipped with the repo: download it
+    # with a free MaxMind licence key. Enrichment skips geolocation while unset.
+    geoip_city_db: Path | None = None
 
     # Used by workers and the analytics API; the request path never touches Postgres.
     database_url: SecretStr = SecretStr("postgresql+asyncpg://mirage:mirage@localhost:5432/mirage")
