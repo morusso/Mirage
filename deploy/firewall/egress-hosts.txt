@@ -1,0 +1,15 @@
+# Hostnames the host itself may reach over HTTPS (tcp/443). One per line.
+# update-egress-set.sh resolves them and fills the nftables set; run it from a
+# timer, since the addresses behind these names change.
+# Containers are NOT affected by this list (only caddy may leave them, see
+# nftables.conf).
+
+# IP reputation / enrichment (stage 2)
+api.abuseipdb.com
+api.greynoise.io
+
+# Uncomment what is actually used:
+# api.openai.com        # tier 2 model, if an external API is chosen
+# logs.example.org      # log server
+# registry-1.docker.io  # only while pulling images; remove afterwards
+# deb.debian.org        # only while patching; remove afterwards

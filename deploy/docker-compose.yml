@@ -106,7 +106,10 @@ services:
     depends_on:
       app:
         condition: service_healthy
-    networks: [edge]
+    networks:
+      edge:
+        # Fixed address: the nftables egress rules single caddy out by it.
+        ipv4_address: 172.28.0.2
 
   # One-shot: applies Alembic migrations, then exits. Everything that touches the
   # database waits for it.
@@ -159,13 +162,20 @@ services:
         condition: service_completed_successfully
 
 networks:
-  # Databases and workers; nothing here is reachable from outside.
+  # Databases and workers; nothing here is reachable from outside. Fixed subnet
+  # because deploy/firewall/nftables.conf lists it.
   backend:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
   # Reverse proxy <-> app. Fixed subnet so the app can name its trusted proxy range.
   edge:
     ipam:
       config:
         - subnet: 172.28.0.0/24
+          # Automatic addresses come from the upper half, so they can never take
+          # caddy's fixed 172.28.0.2 (which they otherwise would: app starts first).
+          ip_range: 172.28.0.128/25
 
 volumes:
   redis-data:
