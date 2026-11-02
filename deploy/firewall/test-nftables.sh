@@ -17,11 +17,11 @@ bad()  { echo "FAIL  $1"; fails=$((fails + 1)); }
 # expect <allow|block> <ns> <port> <description>
 expect() {
 	if ip netns exec "$2" nc -w 2 -z 203.0.113.2 "$3" 2>/dev/null; then got=allow; else got=block; fi
-	[ "$got" = "$1" ] && ok "$4" || bad "$4 (expected $1, got $got)"
+	if [ "$got" = "$1" ]; then ok "$4"; else bad "$4 (expected $1, got $got)"; fi
 }
 host_expect() {
 	if nc -w 2 -z 203.0.113.2 "$2" 2>/dev/null; then got=allow; else got=block; fi
-	[ "$got" = "$1" ] && ok "$3" || bad "$3 (expected $1, got $got)"
+	if [ "$got" = "$1" ]; then ok "$3"; else bad "$3 (expected $1, got $got)"; fi
 }
 
 # --- topology: router(=this ns) with br0 172.28.0.0/24 and an "internet" ns ---
@@ -76,6 +76,7 @@ host_expect allow 443 "host -> allow-listed address:443"
 host_expect block 80  "host -> allow-listed address:80 is still blocked"
 host_expect block 5432 "host -> allow-listed address:5432 is still blocked"
 
+# shellcheck disable=SC2046 # one pid per word is intended
 kill $(jobs -p) 2>/dev/null
 [ "$fails" -eq 0 ] && echo "ALL PASSED" || echo "$fails FAILED"
 exit "$fails"

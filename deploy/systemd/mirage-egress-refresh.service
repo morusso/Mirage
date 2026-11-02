@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh the Mirage HTTPS egress allow-list
+Requires=mirage-firewall.service
+After=mirage-firewall.service
+
+[Service]
+Type=oneshot
+ExecStart=@REPO@/deploy/firewall/update-egress-set.sh

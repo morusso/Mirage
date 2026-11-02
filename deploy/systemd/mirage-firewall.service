@@ -1,0 +1,15 @@
+[Unit]
+Description=Mirage egress firewall (nftables)
+Documentation=file://@REPO@/deploy/firewall/nftables.conf
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f @REPO@/deploy/firewall/nftables.conf
+ExecStartPost=-@REPO@/deploy/firewall/update-egress-set.sh
+ExecStop=/usr/sbin/nft delete table inet mirage_egress
+
+[Install]
+WantedBy=multi-user.target
