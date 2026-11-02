@@ -34,7 +34,7 @@ def _event(path: str = "/.env", **kwargs: object) -> CapturedRequest:
         body_excerpt="hello",
         body_size=5,
         body_sha256="a" * 64,
-        **kwargs,
+        **kwargs,  # type: ignore[arg-type]
     ).with_response(tier=0, status=404, latency_ms=7, tokens_used=0)
 
 
@@ -62,7 +62,7 @@ async def _count(sessions: async_sessionmaker[AsyncSession]) -> int:
 
 async def _wait_until(sessions: async_sessionmaker[AsyncSession], expected: int) -> None:
     async with asyncio.timeout(5):
-        while await _count(sessions) != expected:
+        while await _count(sessions) != expected:  # noqa: ASYNC110
             await asyncio.sleep(0.02)
 
 
@@ -104,7 +104,7 @@ async def test_redelivered_event_is_not_duplicated(
     try:
         await _wait_until(sessions, 1)
         async with asyncio.timeout(5):
-            while (await redis.xpending(stream_name, "persister"))["pending"]:
+            while (await redis.xpending(stream_name, "persister"))["pending"]:  # noqa: ASYNC110
                 await asyncio.sleep(0.02)
     finally:
         persister.stop()
@@ -125,7 +125,7 @@ async def test_malformed_entry_is_dead_lettered_and_valid_ones_are_stored(
     try:
         await _wait_until(sessions, 2)
         async with asyncio.timeout(5):
-            while not await redis.xlen(f"{stream_name}:dead"):
+            while not await redis.xlen(f"{stream_name}:dead"):  # noqa: ASYNC110
                 await asyncio.sleep(0.02)
     finally:
         persister.stop()

@@ -4,6 +4,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 pytestmark = pytest.mark.integration
@@ -79,5 +80,57 @@ async def test_requests_table_roundtrip(postgres_url: str) -> None:
     try:
         async with engine.connect() as conn:
             assert await conn.scalar(text("SELECT to_regclass('public.requests')")) is None
+    finally:
+        await engine.dispose()
+
+
+_SESSION_INSERT = (
+    "INSERT INTO sessions (id, world_id, first_seen, last_seen, ip{extra_cols}) "
+    "VALUES (gen_random_uuid(), 'w', {first_seen}, now(), '203.0.113.7'{extra_vals})"
+)
+
+
+async def test_sessions_table_defaults(postgres_url: str) -> None:
+    await asyncio.to_thread(command.upgrade, _alembic_config(postgres_url), "head")
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(_SESSION_INSERT.format(extra_cols="", first_seen="now()", extra_vals=""))
+            )
+            row = (
+                await conn.execute(
+                    text("SELECT request_count, closed, interest_score, asn, country FROM sessions")
+                )
+            ).one()
+            await conn.execute(text("DELETE FROM sessions"))
+    finally:
+        await engine.dispose()
+    assert tuple(row) == (0, False, 0.0, None, None)
+
+
+@pytest.mark.parametrize(
+    ("extra_cols", "extra_vals", "first_seen"),
+    [
+        (", interest_score", ", 1.5", "now()"),
+        (", abuse_score", ", 101", "now()"),
+        ("", "", "now() + interval '1 hour'"),  # last_seen before first_seen
+    ],
+    ids=["interest_score>1", "abuse_score>100", "last_seen<first_seen"],
+)
+async def test_sessions_table_rejects_invalid_rows(
+    postgres_url: str, extra_cols: str, extra_vals: str, first_seen: str
+) -> None:
+    await asyncio.to_thread(command.upgrade, _alembic_config(postgres_url), "head")
+    statement = _SESSION_INSERT.format(
+        extra_cols=extra_cols, first_seen=first_seen, extra_vals=extra_vals
+    )
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.connect() as conn:
+            with pytest.raises(IntegrityError):
+                await conn.execute(text(statement))
     finally:
         await engine.dispose()
