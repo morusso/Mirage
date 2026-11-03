@@ -947,6 +947,7 @@ dependencies = [
     { name = "dnspython" },
     { name = "fastapi" },
     { name = "httptools" },
+    { name = "httpx" },
     { name = "jinja2" },
     { name = "maxminddb" },
     { name = "pydantic-settings" },
@@ -959,7 +960,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -975,6 +975,7 @@ requires-dist = [
     { name = "dnspython", specifier = ">=2.7.0" },
     { name = "fastapi", specifier = ">=0.162.0" },
     { name = "httptools", specifier = ">=0.9.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "maxminddb", specifier = ">=3.2.0" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
@@ -987,7 +988,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "mypy", specifier = ">=2.4.1" },
     { name = "pre-commit", specifier = ">=4.7.0" },
     { name = "pytest", specifier = ">=9.2.0" },

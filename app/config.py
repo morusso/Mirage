@@ -39,5 +39,8 @@ class Settings(BaseSettings):
     # MaxMind GeoLite2-ASN database (.mmdb), obtained the same way.
     geoip_asn_db: Path | None = None
 
+    # AbuseIPDB API key. Enrichment skips IP reputation while unset.
+    abuseipdb_api_key: SecretStr | None = None
+
     # Used by workers and the analytics API; the request path never touches Postgres.
     database_url: SecretStr = SecretStr("postgresql+asyncpg://mirage:mirage@localhost:5432/mirage")
