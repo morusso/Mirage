@@ -17,7 +17,7 @@ from app.config import Settings
 class _InternalServer(uvicorn.Server):
     @contextmanager
     def capture_signals(self) -> Generator[None, None, None]:
-        # The public server owns SIGINT/SIGTERM; we are stopped via should_exit.
+        # The public server owns SIGINT/SIGTERM; I am stopped via should_exit.
         yield
 
 

@@ -25,7 +25,7 @@ def test_trusted_proxy_forwards_client_address() -> None:
 
 
 def test_client_supplied_entries_on_the_left_are_not_trusted() -> None:
-    # The client sent "6.6.6.6"; our proxy appended the address it really saw.
+    # The client sent "6.6.6.6"; my proxy appended the address it really saw.
     assert _resolve("10.0.0.2", "6.6.6.6, 203.0.113.5") == "203.0.113.5"
 
 

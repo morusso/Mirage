@@ -33,7 +33,7 @@ def run_migrations_offline() -> None:
     This configures the context with just a URL
     and not an Engine, though an Engine is acceptable
     here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
+    I don't even need a DBAPI to be available.
 
     Calls to context.execute() here emit the given string to the
     script output.
@@ -58,7 +58,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    """In this scenario we need to create an Engine
+    """In this scenario I need to create an Engine
     and associate a connection with the context.
 
     """

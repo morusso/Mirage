@@ -16,7 +16,7 @@ def resolve_client_ip(
 ) -> IPAddress:
     """Real client address, honouring X-Forwarded-For only when the peer is a trusted proxy.
 
-    Walks the header from the right (the entries our own proxies appended) and
+    Walks the header from the right (the entries my own proxies appended) and
     returns the first address that is not itself a trusted proxy. Entries further
     left are client-controlled and therefore spoofable, so they are never trusted
     past an untrusted hop. An unparsable entry ends the walk.
