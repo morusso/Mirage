@@ -134,3 +134,74 @@ async def test_sessions_table_rejects_invalid_rows(
                 await conn.execute(text(statement))
     finally:
         await engine.dispose()
+
+
+_DETECTION_INSERT = (
+    "INSERT INTO detections (request_id, request_ts, session_id, rule, category, severity"
+    "{extra_cols}) VALUES (1, '2026-11-03T10:00:00Z', gen_random_uuid(), '{rule}', 'sqli', "
+    "'{severity}'{extra_vals})"
+)
+
+
+async def test_detections_table_defaults(postgres_url: str) -> None:
+    await asyncio.to_thread(command.upgrade, _alembic_config(postgres_url), "head")
+    statement = _DETECTION_INSERT.format(
+        rule="sqli.union", severity="high", extra_cols="", extra_vals=""
+    )
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(statement))
+            excerpt = await conn.scalar(text("SELECT matched_excerpt FROM detections"))
+            await conn.execute(text("DELETE FROM detections"))
+    finally:
+        await engine.dispose()
+    assert excerpt == ""
+
+
+async def test_detections_one_row_per_rule_per_request(postgres_url: str) -> None:
+    await asyncio.to_thread(command.upgrade, _alembic_config(postgres_url), "head")
+
+    def insert(rule: str) -> str:
+        return _DETECTION_INSERT.format(rule=rule, severity="high", extra_cols="", extra_vals="")
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text(insert("sqli.union")))
+            await conn.execute(text(insert("sqli.tautology")))  # other rule: fine
+            with pytest.raises(IntegrityError):
+                await conn.execute(text(insert("sqli.union")))  # same rule again
+    finally:
+        await engine.dispose()
+
+
+async def test_detections_reject_unknown_severity(postgres_url: str) -> None:
+    await asyncio.to_thread(command.upgrade, _alembic_config(postgres_url), "head")
+    statement = _DETECTION_INSERT.format(
+        rule="sqli.union", severity="apocalyptic", extra_cols="", extra_vals=""
+    )
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.connect() as conn:
+            with pytest.raises(IntegrityError):
+                await conn.execute(text(statement))
+    finally:
+        await engine.dispose()
+
+
+async def test_detections_downgrade_drops_table(postgres_url: str) -> None:
+    config = _alembic_config(postgres_url)
+    await asyncio.to_thread(command.upgrade, config, "head")
+    await asyncio.to_thread(command.downgrade, config, "0003")
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.connect() as conn:
+            assert await conn.scalar(text("SELECT to_regclass('public.detections')")) is None
+            assert await conn.scalar(text("SELECT to_regclass('public.sessions')")) == "sessions"
+    finally:
+        await engine.dispose()
+    await asyncio.to_thread(command.upgrade, config, "head")
