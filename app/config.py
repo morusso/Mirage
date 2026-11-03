@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # MaxMind GeoLite2-City database (.mmdb). Not shipped with the repo: download it
     # with a free MaxMind licence key. Enrichment skips geolocation while unset.
     geoip_city_db: Path | None = None
+    # MaxMind GeoLite2-ASN database (.mmdb), obtained the same way.
+    geoip_asn_db: Path | None = None
 
     # Used by workers and the analytics API; the request path never touches Postgres.
     database_url: SecretStr = SecretStr("postgresql+asyncpg://mirage:mirage@localhost:5432/mirage")
