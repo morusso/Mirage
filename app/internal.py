@@ -1,7 +1,8 @@
-"""Internal-only HTTP server (health, later metrics).
+"""Internal-only HTTP server: health and Prometheus metrics.
 
 It runs on a separate port that is never published, so the public honeypot
-surface does not expose endpoints like /healthz.
+surface does not expose endpoints like /healthz or /metrics. Prometheus scrapes
+it over the internal network.
 """
 
 import asyncio
@@ -9,7 +10,8 @@ from collections.abc import AsyncIterator, Generator
 from contextlib import asynccontextmanager, contextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.config import Settings
 
@@ -27,6 +29,12 @@ def create_internal_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        # Everything registered in prometheus_client's default registry, plus the
+        # process, platform and GC collectors it ships with.
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     return app
 

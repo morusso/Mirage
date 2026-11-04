@@ -27,6 +27,8 @@ _WEAK = (
     r"cat|ls|id|pwd|ps|env|echo|sleep|ping|rm|cp|mv|nc|ncat|netcat|curl|wget|bash|sh|zsh|"
     r"dash|python[23]?|perl|php|ruby|chmod|chown|base64|telnet|sudo|dir|type|net|find|dig"
 )
+# ``;/bin/cat`` is as much a command as ``;cat``.
+_PATH = r"(?:/(?:usr/)?(?:local/)?s?bin/)?"
 _ARG = r"(?:\s{1,5}(?:[-/~$.'\"<>|\d]|(?:https?|ftp)://)|\s{0,5}(?:$|[;&|`)]))"
 
 
@@ -41,8 +43,8 @@ class ShellChain(RegexRule):
     category = "cmdi"
     severity = Severity.HIGH
     patterns: ClassVar = _compile(
-        rf"{_SEP}(?:{_STRONG})\b(?!\s{{0,5}}=)",
-        rf"{_SEP}(?:{_WEAK})\b{_ARG}",
+        rf"{_SEP}{_PATH}(?:{_STRONG})\b(?!\s{{0,5}}=)",
+        rf"{_SEP}{_PATH}(?:{_WEAK})\b{_ARG}",
     )
 
 
@@ -83,7 +85,9 @@ class DownloadExecute(RegexRule):
         r"\bcertutil(?:\.exe)?\b[^;|&]{0,50}-(?:urlcache|decode)",
         r"\bbitsadmin\b[^;|&]{0,30}/transfer",
         r"\btftp\b[^;|&]{0,30}\b(?:get|put)\b",
-        r"\bchmod\s{1,5}(?:(?:[ugoa]{0,3}\+)?[rwx]{1,3}|[0-7]{3,4})\s{1,5}[/.~]",
+        # Only modes that set an execute bit: 755 yes, 644 no. The ``+`` is optional
+        # because a doubly-encoded ``%2B`` is decoded to a space by ``Inspection``.
+        r"\bchmod\s{1,5}(?:(?:[ugoa]{0,3}\+)?[rw]{0,2}x|[0-7]?[1357][0-7]{2})\s{1,5}[/.~]",
         r"\binvoke-(?:webrequest|expression)\b",
         r"\bdownload(?:string|file)\s{0,5}\(",
         r"\bnew-object\s{1,5}(?:system\.)?net\.webclient\b",
@@ -102,7 +106,7 @@ class ReverseShell(RegexRule):
         r"\bbash\s{1,5}-i\b",
         r"\bmkfifo\b",
         r"\bfsockopen\s{0,5}\(",
-        r"\bpython[23]?\s{1,5}-c\s",
+        r"\bpython[23]?\s{1,5}-c\s{1,5}['\"]?\s{0,5}(?:import|from|exec|eval|__import__)\b",
         r"\bsocket\s{0,5}\.\s{0,5}socket\s{0,5}\([^)]{0,60}\)[^;]{0,100}\b(?:connect|dup2)\b",
     )
 

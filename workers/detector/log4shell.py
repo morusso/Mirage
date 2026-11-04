@@ -18,6 +18,8 @@ from abc import abstractmethod
 from workers.detector.rules import Inspection, Location, Rule, Severity
 
 MAX_ROUNDS = 6  # nesting depth resolved; deeper is treated as the attacker's problem
+MAX_OPENINGS = 20  # ``${`` positions tried when looking for the original payload
+MAX_PAYLOAD_CHARS = 200  # reach of one lookup, braces balanced or not
 
 _LOOKUP = re.compile(
     r"\$\{(?:(?:lower|upper):([^${}]{0,20})|[^${}]{0,20}:-([^${}]{0,20}))\}",
@@ -43,6 +45,33 @@ def deobfuscate(text: str) -> str:
             break
         text = resolved
     return text
+
+
+def _lookup_at(text: str, start: int) -> str:
+    """The ``${...}`` opening at ``start``, up to its closing brace (or the length cap)."""
+    depth = 0
+    window = text[start : start + MAX_PAYLOAD_CHARS]
+    for index, char in enumerate(window):
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return window[: index + 1]
+    return window
+
+
+def original_payload(text: str) -> str | None:
+    """The lookup as the sender wrote it, whose deobfuscated form is a JNDI lookup."""
+    start = -1
+    for _ in range(MAX_OPENINGS):
+        start = text.find("${", start + 1)
+        if start == -1:
+            return None
+        lookup = _lookup_at(text, start)
+        if _JNDI.match(deobfuscate(lookup)):
+            return lookup
+    return None
 
 
 class _Log4ShellRule(Rule):
@@ -73,7 +102,11 @@ class JndiLookup(_Log4ShellRule):
 
 
 class JndiObfuscated(_Log4ShellRule):
-    """A JNDI lookup that only appears after deobfuscation: the sender is dodging filters."""
+    """A JNDI lookup that only appears after deobfuscation: the sender is dodging filters.
+
+    The excerpt is the payload as sent, so the analyst sees which evasion was used;
+    ``JndiLookup`` reports the resolved form, which is stable for grouping.
+    """
 
     name = "log4shell.jndi_obfuscated"
     severity = Severity.CRITICAL
@@ -81,8 +114,7 @@ class JndiObfuscated(_Log4ShellRule):
     def match_text(self, text: str) -> str | None:
         if _JNDI.search(text):
             return None
-        found = _JNDI.search(deobfuscate(text))
-        return found.group(0) if found else None
+        return original_payload(text)
 
 
 class LookupProbe(_Log4ShellRule):
