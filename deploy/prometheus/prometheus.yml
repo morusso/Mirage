@@ -1,0 +1,11 @@
+# Prometheus scrapes only over the internal `monitoring` network; nothing here is
+# published. Targets are the internal servers (never the public port).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: app
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app:8081"]

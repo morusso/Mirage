@@ -128,10 +128,11 @@ services:
     <<: *app
     environment:
       <<: *app-env
-      # The internal server (health) listens inside the container only; its port is
+      # The internal server (health, metrics) listens inside the container only; its port is
       # never published.
       MIRAGE_INTERNAL_HOST: 0.0.0.0
-    networks: [backend, edge]
+    # monitoring: so Prometheus can scrape the internal server.
+    networks: [backend, edge, monitoring]
     deploy:
       resources:
         limits: {cpus: "1.5", memory: 768M, pids: 256}
@@ -161,6 +162,65 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Metrics storage. Reachable only from the monitoring network, never published;
+  # access for operators comes with the VPN.
+  prometheus:
+    <<: *hardened
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Whichever limit is hit first; keeps a small VPS disk from filling up.
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=2GB
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 512M, pids: 256}
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks: [monitoring]
+
+  # Dashboards. Same exposure as Prometheus: internal network only, no published port.
+  grafana:
+    <<: *hardened
+    image: grafana/grafana-oss:12.0.2
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 384M, pids: 256}
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # No phone-home (the egress firewall would block it anyway) and no log files:
+      # the filesystem is read-only.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_LOG_MODE: console
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks: [monitoring]
+
 networks:
   # Databases and workers; nothing here is reachable from outside. Fixed subnet
   # because deploy/firewall/nftables.conf lists it.
@@ -177,8 +237,18 @@ networks:
           # caddy's fixed 172.28.0.2 (which they otherwise would: app starts first).
           ip_range: 172.28.0.128/25
 
+  # Prometheus and Grafana. `internal` means no route out: neither can reach the
+  # internet or the backend network. Fixed subnet because nftables.conf lists it.
+  monitoring:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
 volumes:
   redis-data:
   postgres-data:
   caddy-data:
   caddy-config:
+  prometheus-data:
+  grafana-data:

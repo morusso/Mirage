@@ -26,12 +26,15 @@ check_env() {
 	value() { sed -n "s/^$1=//p" "$env_file" | tail -n 1; }
 	domain=$(value MIRAGE_DOMAIN)
 	password=$(value POSTGRES_PASSWORD)
+	grafana_password=$(value GRAFANA_ADMIN_PASSWORD)
 	[ -n "$domain" ] || die "MIRAGE_DOMAIN is empty"
 	case $domain in
 		localhost | *example.com | *example.org) die "MIRAGE_DOMAIN=$domain is a placeholder" ;;
 	esac
 	[ -n "$password" ] || die "POSTGRES_PASSWORD is empty"
 	[ "${#password}" -ge 16 ] || die "POSTGRES_PASSWORD is shorter than 16 characters"
+	[ -n "$grafana_password" ] || die "GRAFANA_ADMIN_PASSWORD is empty"
+	[ "${#grafana_password}" -ge 16 ] || die "GRAFANA_ADMIN_PASSWORD is shorter than 16 characters"
 	echo "ok: $env_file"
 }
 
