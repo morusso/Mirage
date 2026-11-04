@@ -8,7 +8,8 @@ from ipaddress import IPv4Address, IPv6Address, ip_address
 from app.asgi_types import ASGIApp, Message, Receive, Scope, Send
 from app.capture.client_ip import IPNetwork, resolve_client_ip
 from app.capture.fingerprint import fingerprint_v1
-from app.personas.base import PERSONA_SCOPE_KEY, PersonaConfig
+from app.metrics import observe_request
+from app.personas.base import DEFAULT_PERSONA, PERSONA_SCOPE_KEY, PersonaConfig
 from domain.captured_request import CapturedRequest
 
 MAX_BODY_EXCERPT_BYTES = 1024 * 1024
@@ -193,13 +194,23 @@ class CaptureMiddleware:
                 status = 500
             raise
         finally:
+            duration_s = time.perf_counter() - started
             persona = scope.get(PERSONA_SCOPE_KEY)
+            tier = scope.get(TIER_SCOPE_KEY, 0)
+            observe_request(
+                persona=persona.name
+                if isinstance(persona, PersonaConfig)
+                else DEFAULT_PERSONA.name,
+                tier=tier,
+                status=status,
+                duration_s=duration_s,
+            )
             completed = captured.model_copy(
                 update={"persona": persona.name if isinstance(persona, PersonaConfig) else None}
             ).with_response(
-                tier=scope.get(TIER_SCOPE_KEY, 0),
+                tier=tier,
                 status=status,
-                latency_ms=round((time.perf_counter() - started) * 1000),
+                latency_ms=round(duration_s * 1000),
                 tokens_used=scope.get(TOKENS_SCOPE_KEY, 0),
             )
             await self.sink(completed)
