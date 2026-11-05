@@ -27,6 +27,7 @@ check_env() {
 	domain=$(value MIRAGE_DOMAIN)
 	password=$(value POSTGRES_PASSWORD)
 	grafana_password=$(value GRAFANA_ADMIN_PASSWORD)
+	grafana_db_password=$(value GRAFANA_DB_PASSWORD)
 	[ -n "$domain" ] || die "MIRAGE_DOMAIN is empty"
 	case $domain in
 		localhost | *example.com | *example.org) die "MIRAGE_DOMAIN=$domain is a placeholder" ;;
@@ -35,6 +36,10 @@ check_env() {
 	[ "${#password}" -ge 16 ] || die "POSTGRES_PASSWORD is shorter than 16 characters"
 	[ -n "$grafana_password" ] || die "GRAFANA_ADMIN_PASSWORD is empty"
 	[ "${#grafana_password}" -ge 16 ] || die "GRAFANA_ADMIN_PASSWORD is shorter than 16 characters"
+	case $grafana_db_password in
+		"" | *[!A-Za-z0-9]*) die "GRAFANA_DB_PASSWORD must be non-empty, letters and digits only" ;;
+	esac
+	[ "${#grafana_db_password}" -ge 16 ] || die "GRAFANA_DB_PASSWORD is shorter than 16 characters"
 	[ -f "$deploy_dir/wireguard/wg0.conf" ] || die "deploy/wireguard/wg0.conf not found (copy wg0.conf.example)"
 	echo "ok: $env_file"
 }
@@ -74,6 +79,12 @@ systemctl enable mirage-firewall.service mirage-egress-refresh.timer >/dev/null
 systemctl start mirage-egress-refresh.timer
 
 step "Starting containers"
+# Postgres first: the Grafana role must exist before Grafana connects.
+$compose up -d --wait --wait-timeout 180 postgres
+step "Applying read-only Grafana role"
+db_password=$(sed -n 's/^GRAFANA_DB_PASSWORD=//p' "$env_file" | tail -n 1)
+{ printf "\\\\set pw '%s'\n" "$db_password"; cat "$deploy_dir/postgres/grafana-role.sql"; } |
+	$compose exec -T postgres psql -v ON_ERROR_STOP=1 -q -U mirage -d mirage >/dev/null
 $compose up -d --remove-orphans --wait --wait-timeout 180
 
 step "Smoke test"

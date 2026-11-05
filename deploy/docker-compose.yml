@@ -81,7 +81,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [backend]
+    networks: [backend, analytics]
 
   caddy:
     <<: *hardened
@@ -207,9 +207,11 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
       GF_LOG_MODE: console
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?set GRAFANA_DB_PASSWORD}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana-dashboards:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
       interval: 10s
@@ -219,7 +221,8 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
-    networks: [monitoring]
+    # analytics: read-only SQL access to Postgres for the dashboards.
+    networks: [monitoring, analytics]
 
   # VPN entry to the monitoring network. The only way in for operators: Grafana and
   # Prometheus are never published. Peers can reach the monitoring subnet and nothing
@@ -271,6 +274,14 @@ networks:
     ipam:
       config:
         - subnet: 172.30.0.0/24
+
+  # Postgres <-> Grafana only. `internal`: no route out. Fixed subnet because
+  # nftables.conf lists it.
+  analytics:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
 
   # WireGuard's published UDP port. Fixed subnet because nftables.conf lists it.
   vpn:
