@@ -34,7 +34,7 @@ async def test_events_carry_response_metadata_and_persona(
     app.state.publisher = recorder
 
     await client.get("/api/v1/products/1")
-    await client.get("/phpmyadmin/")
+    await client.get("/nothing-here")
     await client.post("/api/v1/auth/login", json={"email": "x", "password": "y"})
 
     summary = [(e.persona, e.status, e.tier) for e in recorder.events]

@@ -1,0 +1,40 @@
+<!DOCTYPE HTML>
+<html lang="en" dir="ltr" data-bs-theme="">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="referrer" content="same-origin">
+  <meta name="robots" content="noindex,nofollow">
+  <title>phpMyAdmin</title>
+  <link rel="stylesheet" type="text/css" href="{{ base }}/themes/pmahomme/css/theme.css?v=5.2.1">
+</head>
+<body class="loginform">
+<noscript><div class="alert alert-danger" role="alert">Javascript must be enabled past this point!</div></noscript>
+<div class="container">
+  <a href="https://www.phpmyadmin.net/" target="_blank" rel="noopener noreferrer" class="logo"><img src="{{ base }}/themes/pmahomme/img/logo_right.png" id="imLogo" alt="phpMyAdmin" border="0"></a>
+  <h1>Welcome to <bdo dir="ltr" lang="en">phpMyAdmin</bdo></h1>
+{% if error %}
+  <div class="alert alert-danger" role="alert"><img src="{{ base }}/themes/dot.gif" title="" alt="" class="icon ic_s_error"> {{ error }}</div>
+{% endif %}
+  <form method="post" id="login_form" action="{{ base }}/index.php" name="login_form" class="disableAjax login hide js-show">
+    <fieldset>
+      <legend>Log in<a href="{{ base }}/doc/html/index.html" target="documentation"><img src="{{ base }}/themes/dot.gif" title="Documentation" alt="Documentation" class="icon ic_b_help"></a></legend>
+      <div class="item">
+        <label for="input_username">Username:</label>
+        <input type="text" name="pma_username" id="input_username" value="{{ username }}" size="24" class="textfield" autocomplete="username" spellcheck="false">
+      </div>
+      <div class="item">
+        <label for="input_password">Password:</label>
+        <input type="password" name="pma_password" id="input_password" value="" size="24" class="textfield" autocomplete="current-password" spellcheck="false">
+      </div>
+      <input type="hidden" name="server" value="1">
+    </fieldset>
+    <fieldset class="tblFooters">
+      <input class="btn btn-primary" value="Log in" type="submit" id="input_go">
+      <input type="hidden" name="set_session" value="{{ session }}">
+      <input type="hidden" name="token" value="{{ token }}">
+    </fieldset>
+  </form>
+</div>
+</body>
+</html>
