@@ -17,7 +17,7 @@ def app() -> FastAPI:
         ("GET", "/api/v1/products", True),
         ("GET", "/api/v1/users/42", True),
         ("get", "/.env", True),
-        ("GET", "/wp-login.php", False),
+        ("GET", "/phpmyadmin/index.php", False),
         ("POST", "/api/v1/products", False),  # path exists, method does not
     ],
 )
@@ -28,12 +28,12 @@ def test_is_covered(app: FastAPI, method: str, path: str, expected: bool) -> Non
 def test_analyze_counts_requests_not_paths(app: FastAPI) -> None:
     report = analyze(
         app,
-        [("GET", "/api/v1/products", 6), ("GET", "/wp-login.php", 3), ("GET", "/x", 1)],
+        [("GET", "/api/v1/products", 6), ("GET", "/phpmyadmin/index.php", 3), ("GET", "/x", 1)],
     )
 
     assert (report.total, report.covered) == (10, 6)
     assert report.coverage_pct == 60.0
-    assert report.uncovered.most_common(1) == [("/wp-login.php", 3)]
+    assert report.uncovered.most_common(1) == [("/phpmyadmin/index.php", 3)]
 
 
 def test_empty_report_is_zero_percent(app: FastAPI) -> None:

@@ -32,7 +32,7 @@ async def test_request_is_counted_per_persona_tier_and_status(client: httpx.Asyn
 async def test_unknown_path_is_counted_for_the_catch_all_persona(client: httpx.AsyncClient) -> None:
     before = _count("catch_all", "0", "404")
 
-    await client.get("/wp-admin/")
+    await client.get("/phpmyadmin/")
 
     assert _count("catch_all", "0", "404") == before + 1
 

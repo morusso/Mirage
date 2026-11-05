@@ -9,7 +9,7 @@ from app.capture.publisher import StreamPublisher
 from app.config import Settings
 from app.internal import run_internal_server
 from app.log import configure_logging
-from app.personas import catch_all, fake_api
+from app.personas import catch_all, fake_api, wordpress
 from app.personas.base import PersonaHeadersMiddleware
 from domain.captured_request import CapturedRequest
 
@@ -62,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         trusted_proxies=settings.trusted_proxies,
     )
     app.include_router(fake_api.router)
+    app.include_router(wordpress.router)
     # Must stay last: it matches every path not claimed by a more specific router.
     app.include_router(catch_all.router)
     app.state.settings = settings
