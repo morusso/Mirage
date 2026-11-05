@@ -117,3 +117,6 @@ Desktop.ini
 # Test fixtures live in tests/data (the rule above is for local data dumps).
 !tests/data/
 !tests/data/**
+
+# WireGuard server key and peers
+deploy/wireguard/wg0.conf

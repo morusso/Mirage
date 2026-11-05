@@ -35,6 +35,7 @@ check_env() {
 	[ "${#password}" -ge 16 ] || die "POSTGRES_PASSWORD is shorter than 16 characters"
 	[ -n "$grafana_password" ] || die "GRAFANA_ADMIN_PASSWORD is empty"
 	[ "${#grafana_password}" -ge 16 ] || die "GRAFANA_ADMIN_PASSWORD is shorter than 16 characters"
+	[ -f "$deploy_dir/wireguard/wg0.conf" ] || die "deploy/wireguard/wg0.conf not found (copy wg0.conf.example)"
 	echo "ok: $env_file"
 }
 

@@ -1,0 +1,12 @@
+# Copy to deploy/wireguard/wg0.conf (git-ignored) and chmod 600. Native `wg` format,
+# no Address/DNS lines (the address comes from WG_ADDRESS in docker-compose.yml).
+#   server key:  wg genkey | tee server.key | wg pubkey
+#   peer key:    wg genkey | tee peer.key   | wg pubkey   (private half stays on the laptop)
+# deploy/wireguard/add-peer.sh generates a peer and prints its client config.
+[Interface]
+PrivateKey = <server private key>
+ListenPort = 51820
+
+# [Peer]
+# PublicKey = <peer public key>
+# AllowedIPs = 10.8.0.2/32

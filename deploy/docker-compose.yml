@@ -221,6 +221,33 @@ services:
         condition: service_healthy
     networks: [monitoring]
 
+  # VPN entry to the monitoring network. The only way in for operators: Grafana and
+  # Prometheus are never published. Peers can reach the monitoring subnet and nothing
+  # else (see wireguard/entrypoint.sh).
+  wireguard:
+    <<: *hardened
+    build:
+      context: ./wireguard
+    image: mirage-wireguard:dev
+    restart: unless-stopped
+    # Needs NET_ADMIN to create wg0 and set iptables rules; nothing else.
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    environment:
+      WG_ADDRESS: 10.8.0.1/24
+      WG_ALLOWED_DEST: 172.30.0.0/24
+    ports:
+      - "${MIRAGE_WG_PORT:-51820}:51820/udp"
+    volumes:
+      - ./wireguard/wg0.conf:/etc/wireguard/wg0.conf:ro
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 64M, pids: 64}
+    # vpn gives the published port a route; monitoring is internal and has no gateway,
+    # so the default route (and replies to peers) goes out via vpn.
+    networks: [vpn, monitoring]
+
 networks:
   # Databases and workers; nothing here is reachable from outside. Fixed subnet
   # because deploy/firewall/nftables.conf lists it.
@@ -244,6 +271,12 @@ networks:
     ipam:
       config:
         - subnet: 172.30.0.0/24
+
+  # WireGuard's published UDP port. Fixed subnet because nftables.conf lists it.
+  vpn:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
 
 volumes:
   redis-data:
