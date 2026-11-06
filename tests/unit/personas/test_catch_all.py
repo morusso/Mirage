@@ -16,14 +16,14 @@ async def test_unknown_path_returns_nginx_404_for_every_method(
 
 
 async def test_head_returns_404_without_body(client: httpx.AsyncClient) -> None:
-    response = await client.head("/phpmyadmin/")
+    response = await client.head("/nothing-here")
 
     assert response.status_code == 404
     assert response.content == b""
 
 
 async def test_response_headers_look_like_nginx(client: httpx.AsyncClient) -> None:
-    response = await client.get("/.git/config")
+    response = await client.get("/nothing-here")
 
     assert response.headers["content-type"] == "text/html"
     assert response.headers.get_list("server") == [DEFAULT_PERSONA.server]

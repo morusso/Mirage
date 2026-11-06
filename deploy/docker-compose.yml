@@ -162,6 +162,45 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Creates one sessions row per attacker session (country, ASN, reverse DNS, reputation).
+  # The only worker that may leave the host: DNS and HTTPS to the allow-listed hosts, at its
+  # fixed address (see nftables.conf). GeoLite2 files and the AbuseIPDB key are optional.
+  enrichment:
+    <<: *app
+    command: ["python", "-m", "workers.enrichment.worker"]
+    environment:
+      <<: *app-env
+      # No value: taken from deploy/.env if set there, absent otherwise.
+      MIRAGE_GEOIP_CITY_DB:
+      MIRAGE_GEOIP_ASN_DB:
+      MIRAGE_ABUSEIPDB_API_KEY:
+    volumes:
+      - ./geoip:/geoip:ro
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M, pids: 256}
+    networks:
+      backend:
+        ipv4_address: 172.29.0.10
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Runs the detection rules over every captured request; writes the detections table.
+  detector:
+    <<: *app
+    command: ["python", "-m", "workers.detector.worker"]
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M, pids: 256}
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   # Metrics storage. Reachable only from the monitoring network, never published;
   # access for operators comes with the VPN.
   prometheus:
@@ -258,6 +297,9 @@ networks:
     ipam:
       config:
         - subnet: 172.29.0.0/24
+          # Automatic addresses come from the upper half, so they never take the
+          # enrichment worker's fixed 172.29.0.10.
+          ip_range: 172.29.0.128/25
   # Reverse proxy <-> app. Fixed subnet so the app can name its trusted proxy range.
   edge:
     ipam:

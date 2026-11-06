@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from markupsafe import Markup
 
 from app.engine.templates import render_template
-from app.personas.base import PersonaConfig, persona_dependency
+from app.personas.base import PersonaConfig, answer_head_like_get, persona_dependency
 
 PHPMYADMIN_PERSONA = PersonaConfig(
     name="phpmyadmin", server="Apache/2.4.58 (Debian)", powered_by="PHP/8.2.18"
@@ -83,5 +83,6 @@ for _base in PREFIXES:
     _register(_base)
 
 # Routes are copied on include, so this must come after all route definitions.
+answer_head_like_get(inner)
 router = APIRouter(dependencies=[Depends(persona_dependency(PHPMYADMIN_PERSONA))])
 router.include_router(inner)

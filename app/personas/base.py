@@ -1,7 +1,8 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from fastapi import Request
+from fastapi import APIRouter, Request
+from fastapi.routing import APIRoute
 
 from app.asgi_types import ASGIApp, Message, Receive, Scope, Send
 
@@ -18,6 +19,19 @@ class PersonaConfig:
 
 
 DEFAULT_PERSONA = PersonaConfig(name="default", server="nginx/1.24.0")
+
+
+def answer_head_like_get(router: APIRouter) -> None:
+    """Let every GET route of ``router`` also answer HEAD.
+
+    FastAPI's ``@router.get`` registers GET only, so a HEAD probe (scanners use it to
+    check whether a path exists) would fall through to the catch-all 404 and contradict
+    the GET answer. Call it on a router before it is included elsewhere: included routes
+    are copies.
+    """
+    for route in router.routes:
+        if isinstance(route, APIRoute) and route.methods and "GET" in route.methods:
+            route.methods.add("HEAD")
 
 
 def persona_dependency(config: PersonaConfig) -> Callable[[Request], Awaitable[None]]:

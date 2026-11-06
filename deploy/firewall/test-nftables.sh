@@ -37,6 +37,16 @@ for spec in caddy:2 app:3; do
 	ip -n "$ns" link set lo up
 	ip -n "$ns" route add default via 172.28.0.1
 done
+# enrichment: its own subnet on the same bridge, like Docker's backend network
+ip addr add 172.29.0.1/24 dev br0
+ip netns add enrich
+ip link add v-enrich type veth peer name p-enrich
+ip link set p-enrich netns enrich name eth0
+ip link set v-enrich master br0 up
+ip -n enrich addr add 172.29.0.10/24 dev eth0
+ip -n enrich link set eth0 up
+ip -n enrich link set lo up
+ip -n enrich route add default via 172.29.0.1
 ip netns add internet
 ip link add v-net type veth peer name p-net
 ip link set p-net netns internet name eth0
@@ -68,6 +78,16 @@ expect block caddy 5432 "caddy -> internet:5432 is blocked"
 expect block app   443  "app -> internet:443 is blocked"
 expect block app   80   "app -> internet:80 is blocked"
 expect block app   5432 "app -> internet:5432 is blocked"
+
+echo "--- enrichment worker ---"
+expect allow enrich 53   "enrich -> internet:53 (DNS)"
+expect block enrich 443  "enrich -> unlisted address:443 is blocked"
+nft add element inet mirage_egress allowed_https_v4 '{ 203.0.113.2 }'
+expect allow enrich 443  "enrich -> allow-listed address:443 (AbuseIPDB)"
+expect block enrich 80   "enrich -> allow-listed address:80 is still blocked"
+expect block enrich 5432 "enrich -> allow-listed address:5432 is still blocked"
+expect block app   443   "app -> allow-listed address:443 is still blocked"
+nft flush set inet mirage_egress allowed_https_v4
 
 echo "--- host ---"
 host_expect block 443 "host -> unlisted address:443 is blocked"

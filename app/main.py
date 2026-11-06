@@ -9,7 +9,14 @@ from app.capture.publisher import StreamPublisher
 from app.config import Settings
 from app.internal import run_internal_server
 from app.log import configure_logging
-from app.personas import catch_all, fake_api, phpmyadmin, wordpress
+from app.personas import (
+    catch_all,
+    config_leaks,
+    fake_api,
+    phpmyadmin,
+    spring_actuator,
+    wordpress,
+)
 from app.personas.base import PersonaHeadersMiddleware
 from domain.captured_request import CapturedRequest
 
@@ -64,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(fake_api.router)
     app.include_router(wordpress.router)
     app.include_router(phpmyadmin.router)
+    app.include_router(config_leaks.router)
+    app.include_router(spring_actuator.router)
     # Must stay last: it matches every path not claimed by a more specific router.
     app.include_router(catch_all.router)
     app.state.settings = settings

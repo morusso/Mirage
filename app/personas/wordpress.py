@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from markupsafe import Markup
 
 from app.engine.templates import render_template
-from app.personas.base import PersonaConfig, persona_dependency
+from app.personas.base import PersonaConfig, answer_head_like_get, persona_dependency
 
 WORDPRESS_PERSONA = PersonaConfig(name="wordpress", server="nginx/1.24.0", powered_by="PHP/8.2.18")
 
@@ -134,5 +134,6 @@ async def wp_cron() -> Response:
     return Response(content="", headers={"content-type": "text/html; charset=UTF-8", **_NO_CACHE})
 
 
+answer_head_like_get(router_inner)
 router = APIRouter(dependencies=[Depends(persona_dependency(WORDPRESS_PERSONA))])
 router.include_router(router_inner)

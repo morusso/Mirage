@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     Integer,
     MetaData,
     SmallInteger,
@@ -17,7 +18,7 @@ from sqlalchemy import (
     Text,
     Uuid,
 )
-from sqlalchemy.dialects.postgresql import INET, JSONB
+from sqlalchemy.dialects.postgresql import CIDR, INET, JSONB
 
 metadata = MetaData()
 
@@ -45,4 +46,43 @@ requests = Table(
     Column("status", SmallInteger),
     Column("latency_ms", Integer),
     Column("tokens_used", Integer),
+)
+
+# One row per detection rule that fired on a request (written by the detector worker).
+# No foreign key: requests is a hypertable (see migration 0004); the request is identified
+# by (request_id, request_ts).
+detections = Table(
+    "detections",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("request_id", BigInteger, nullable=False),
+    Column("request_ts", DateTime(timezone=True), nullable=False),
+    Column("session_id", Uuid, nullable=False),
+    Column("rule", Text, nullable=False),
+    Column("category", Text, nullable=False),
+    Column("severity", Text, nullable=False),
+    Column("matched_excerpt", Text, nullable=False, server_default=""),
+)
+
+# One row per attacker session (migration 0003). Created by the enrichment worker, kept up
+# to date by the sessionizer and classifier.
+sessions = Table(
+    "sessions",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("world_id", Text, nullable=False),
+    Column("first_seen", DateTime(timezone=True), nullable=False),
+    Column("last_seen", DateTime(timezone=True), nullable=False),
+    Column("ip", INET, nullable=False),
+    Column("subnet", CIDR),
+    Column("asn", Integer),
+    Column("country", Text),
+    Column("city", Text),
+    Column("reverse_dns", Text),
+    Column("abuse_score", SmallInteger),
+    Column("request_count", Integer, nullable=False, server_default="0"),
+    Column("known_tool", Text),
+    Column("classification", Text),
+    Column("interest_score", Float, nullable=False, server_default="0"),
+    Column("closed", Boolean, nullable=False, server_default="false"),
 )

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, TypeAdapter
 
 from app.engine.templates import render_template
-from app.personas.base import PersonaConfig, persona_dependency
+from app.personas.base import PersonaConfig, answer_head_like_get, persona_dependency
 from app.personas.fake_jwt import FAKE_SECRET, issue_token
 
 FAKE_API_PERSONA = PersonaConfig(name="fake_api", server="nginx/1.24.0", powered_by="Express")
@@ -189,6 +189,8 @@ async def dotenv() -> Response:
 
 
 # Routes are copied on include, so this must come after all route definitions.
+answer_head_like_get(api_router)
+answer_head_like_get(root_router)
 router = APIRouter(dependencies=[Depends(persona_dependency(FAKE_API_PERSONA))])
 router.include_router(api_router)
 router.include_router(root_router)

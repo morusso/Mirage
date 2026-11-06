@@ -120,3 +120,6 @@ Desktop.ini
 
 # WireGuard server key and peers
 deploy/wireguard/wg0.conf
+
+# GeoLite2 databases (MaxMind licence)
+deploy/geoip/*.mmdb
