@@ -107,7 +107,9 @@ class LLMClient:
             raise LLMUnavailable(f"endpoint answered HTTP {exc.status_code}") from exc
         except openai.APIConnectionError as exc:
             raise LLMUnavailable("endpoint unreachable") from exc
-        except openai.OpenAIError as exc:
+        except (openai.OpenAIError, ValueError) as exc:
+            # ValueError: the SDK lets a body that is not JSON (or not a completion)
+            # escape as json/pydantic errors rather than as its own exception type.
             raise LLMBadResponse(type(exc).__name__) from exc
 
         if not response.choices:
