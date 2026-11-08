@@ -3,9 +3,16 @@ from ipaddress import ip_address
 from uuid import uuid4
 
 import pytest
+from prometheus_client import REGISTRY
 
 from app.engine.engine import ResponseEngine, Source
-from app.engine.llm_client import Completion, LLMTimeout, LLMUnavailable, Message
+from app.engine.llm_client import (
+    Completion,
+    LLMBadResponse,
+    LLMTimeout,
+    LLMUnavailable,
+    Message,
+)
 from app.engine.response import GeneratedResponse
 from app.engine.signature import request_signature
 from domain.captured_request import CapturedRequest
@@ -101,6 +108,45 @@ async def test_model_failure_falls_back_and_is_not_cached(outcome: str | Excepti
     assert cache.items == {}
     # The next request tries the model again.
     assert (await _respond(engine, _req()))[0] is Source.MODEL
+
+
+def _failures(reason: str) -> float:
+    return REGISTRY.get_sample_value("mirage_llm_failures_total", {"reason": reason}) or 0.0
+
+
+def _fallbacks() -> float:
+    return REGISTRY.get_sample_value("mirage_fallbacks_total") or 0.0
+
+
+@pytest.mark.parametrize(
+    ("outcome", "reason"),
+    [
+        (LLMTimeout("slow"), "timeout"),
+        (LLMUnavailable("down"), "unavailable"),
+        (LLMBadResponse("junk"), "bad_response"),
+        ("not json at all", "invalid_output"),
+    ],
+)
+async def test_failures_are_counted_by_reason_with_a_fallback(
+    outcome: str | Exception, reason: str
+) -> None:
+    failures, fallbacks = _failures(reason), _fallbacks()
+    engine = ResponseEngine(cache=MemoryCache(), model=StubModel(outcome))
+
+    await _respond(engine, _req())
+
+    assert _failures(reason) == failures + 1
+    assert _fallbacks() == fallbacks + 1
+
+
+async def test_success_and_cache_hit_count_no_failure() -> None:
+    before = (_failures("timeout"), _fallbacks())
+    engine = ResponseEngine(cache=MemoryCache(), model=StubModel(MODEL_JSON))
+
+    await _respond(engine, _req())
+    await _respond(engine, _req())
+
+    assert (_failures("timeout"), _fallbacks()) == before
 
 
 async def test_tier_property() -> None:

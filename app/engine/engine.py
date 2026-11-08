@@ -20,10 +20,18 @@ from typing import Protocol
 import structlog
 from pydantic import ValidationError
 
-from app.engine.llm_client import Completion, LLMError, Message
+from app.engine.llm_client import (
+    Completion,
+    LLMBadResponse,
+    LLMError,
+    LLMTimeout,
+    LLMUnavailable,
+    Message,
+)
 from app.engine.prompts.builder import build_messages
 from app.engine.response import GeneratedResponse
 from app.engine.signature import request_signature
+from app.metrics import observe_llm_failure
 from domain.captured_request import CapturedRequest
 
 logger = structlog.get_logger()
@@ -98,11 +106,24 @@ class ResponseEngine:
                 messages, max_tokens=RESPONSE_MAX_TOKENS, json_mode=True
             )
         except LLMError as exc:
+            observe_llm_failure(_failure_reason(exc))
             logger.warning("tier1_failed", error=type(exc).__name__)
             return None
         try:
             return GeneratedResponse.model_validate_json(completion.text)
         except ValidationError:
+            observe_llm_failure("invalid_output")
             # Details are not logged: they quote attacker-influenced model output.
             logger.warning("tier1_output_invalid", truncated=completion.truncated)
             return None
+
+
+def _failure_reason(exc: LLMError) -> str:
+    """Bounded metric label for a model error."""
+    if isinstance(exc, LLMTimeout):
+        return "timeout"
+    if isinstance(exc, LLMUnavailable):
+        return "unavailable"
+    if isinstance(exc, LLMBadResponse):
+        return "bad_response"
+    return "other"

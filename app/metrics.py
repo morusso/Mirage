@@ -22,6 +22,23 @@ REQUEST_DURATION = Histogram(
     buckets=_LATENCY_BUCKETS,
 )
 
+LLM_FAILURES = Counter(
+    "mirage_llm_failures",
+    "Tier 1 model calls that produced no usable answer, by reason: timeout, "
+    "unavailable (connection or HTTP error), bad_response (malformed API reply) "
+    "or invalid_output (model text failed GeneratedResponse validation).",
+    ["reason"],
+)
+FALLBACKS = Counter(
+    "mirage_fallbacks",
+    "Requests answered with the static fallback because the model failed.",
+)
+
+
+def observe_llm_failure(reason: str) -> None:
+    LLM_FAILURES.labels(reason=reason).inc()
+    FALLBACKS.inc()
+
 
 def observe_request(*, persona: str, tier: int, status: int | None, duration_s: float) -> None:
     """Record one answered request. ``status`` is None if no response was started."""
