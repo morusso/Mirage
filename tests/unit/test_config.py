@@ -60,3 +60,13 @@ def test_database_url_is_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert settings.database_url.get_secret_value().endswith("@db/mirage")
     assert "s3cret" not in repr(settings)
+
+
+def test_tier1_is_off_by_default() -> None:
+    assert Settings().tier1_enabled is False
+
+
+def test_tier1_flag_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MIRAGE_TIER1_ENABLED", "true")
+
+    assert Settings().tier1_enabled is True

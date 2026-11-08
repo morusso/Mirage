@@ -2,9 +2,11 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from app.config import Settings
+from app.engine.engine import ResponseEngine
 from app.main import create_app
 
 
@@ -54,3 +56,16 @@ async def test_redis_client_uses_configured_url() -> None:
     async with app.router.lifespan_context(app):
         kwargs = app.state.redis.connection_pool.connection_kwargs
         assert (kwargs["host"], kwargs["port"], kwargs["db"]) == ("cache.internal", 6380, 3)
+
+
+async def test_engine_is_absent_while_tier1_is_disabled(app: FastAPI) -> None:
+    assert app.state.engine is None
+
+
+async def test_engine_is_built_when_tier1_is_enabled() -> None:
+    app = create_app(
+        Settings(environment="test", internal_server_enabled=False, tier1_enabled=True)
+    )
+
+    async with app.router.lifespan_context(app):
+        assert isinstance(app.state.engine, ResponseEngine)

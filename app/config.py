@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # Env example: MIRAGE_TRUSTED_PROXIES='["172.16.0.0/12"]'
     trusted_proxies: list[IPv4Network | IPv6Network] = []
 
+    # Tier 1: answer unknown requests with the local model. Off by default so main stays
+    # deployable on a host without a model; the model endpoint is set in LLMSettings.
+    tier1_enabled: bool = False
+
     redis_url: str = "redis://localhost:6379/0"
 
     capture_stream: str = "mirage:events"

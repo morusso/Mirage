@@ -7,6 +7,10 @@ from redis.asyncio import Redis
 from app.capture.middleware import CaptureMiddleware, Sink
 from app.capture.publisher import StreamPublisher
 from app.config import Settings
+from app.engine.cache import ResponseCache
+from app.engine.engine import ResponseEngine
+from app.engine.llm_client import LLMClient
+from app.engine.llm_settings import LLMSettings
 from app.internal import run_internal_server
 from app.log import configure_logging
 from app.personas import (
@@ -32,6 +36,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.capture_stream,
         maxlen=settings.capture_stream_maxlen,
         timeout_s=settings.capture_publish_timeout_s,
+    )
+    # None means tier 1 is off: personas answer from tier 0 only.
+    app.state.engine = (
+        ResponseEngine(cache=ResponseCache(redis), model=LLMClient(LLMSettings().local))
+        if settings.tier1_enabled
+        else None
     )
     try:
         async with run_internal_server(settings):
