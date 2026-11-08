@@ -50,6 +50,8 @@ class Source(StrEnum):
 class EngineResult:
     response: GeneratedResponse
     source: Source
+    # Tokens the model spent on this request, including an answer that was rejected.
+    tokens_used: int = 0
 
     @property
     def tier(self) -> int:
@@ -90,16 +92,17 @@ class ResponseEngine:
         if cached is not None:
             return EngineResult(cached, Source.CACHE)
 
-        generated = await self._generate(request, persona_prompt)
+        generated, tokens = await self._generate(request, persona_prompt)
         if generated is None:
-            return EngineResult(fallback(), Source.FALLBACK)
+            return EngineResult(fallback(), Source.FALLBACK, tokens)
 
         await self.cache.set(signature, generated)
-        return EngineResult(generated, Source.MODEL)
+        return EngineResult(generated, Source.MODEL, tokens)
 
     async def _generate(
         self, request: CapturedRequest, persona_prompt: str
-    ) -> GeneratedResponse | None:
+    ) -> tuple[GeneratedResponse | None, int]:
+        """The validated answer (None on failure) and the tokens spent getting it."""
         messages = build_messages(persona_prompt=persona_prompt, request=request)
         try:
             completion = await self.model.complete(
@@ -108,14 +111,14 @@ class ResponseEngine:
         except LLMError as exc:
             observe_llm_failure(_failure_reason(exc))
             logger.warning("tier1_failed", error=type(exc).__name__)
-            return None
+            return None, 0
         try:
-            return GeneratedResponse.model_validate_json(completion.text)
+            return GeneratedResponse.model_validate_json(completion.text), completion.total_tokens
         except ValidationError:
             observe_llm_failure("invalid_output")
             # Details are not logged: they quote attacker-influenced model output.
             logger.warning("tier1_output_invalid", truncated=completion.truncated)
-            return None
+            return None, completion.total_tokens
 
 
 def _failure_reason(exc: LLMError) -> str:

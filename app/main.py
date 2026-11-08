@@ -79,6 +79,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         trusted_proxies=settings.trusted_proxies,
     )
     app.include_router(fake_api.router)
+    # Right after the fixtures: tier 1 answers /api/v1 paths they do not serve.
+    app.include_router(fake_api.model_router)
     app.include_router(wordpress.router)
     app.include_router(phpmyadmin.router)
     app.include_router(config_leaks.router)

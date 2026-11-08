@@ -6,8 +6,13 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, TypeAdapter
 
+from app.capture.middleware import REQUEST_SCOPE_KEY, TIER_SCOPE_KEY, TOKENS_SCOPE_KEY
+from app.engine.engine import ResponseEngine
+from app.engine.prompts.fake_api import FAKE_API_PROMPT
+from app.engine.response import GeneratedResponse
 from app.engine.templates import render_template
 from app.personas.base import PersonaConfig, answer_head_like_get, persona_dependency
+from app.personas.errors import nginx_404_page
 from app.personas.fake_jwt import FAKE_SECRET, issue_token
 
 FAKE_API_PERSONA = PersonaConfig(name="fake_api", server="nginx/1.24.0", powered_by="Express")
@@ -185,6 +190,46 @@ async def dotenv() -> Response:
     return Response(
         content=render_template("fake_api/dotenv.env", **ENV_BAIT_CONTEXT),
         headers={"content-type": "application/octet-stream"},
+    )
+
+
+# Kept apart from api_router: it matches every /api/v1 path, so it is not a template.
+# Mounted separately, right after ``router`` (see create_app), so only paths no fixture
+# route claimed reach it.
+model_router = APIRouter(
+    prefix="/api/v1",
+    include_in_schema=False,
+    dependencies=[Depends(persona_dependency(FAKE_API_PERSONA))],
+)
+
+
+@model_router.api_route(
+    "/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+)
+async def unknown_endpoint(request: Request) -> Response:
+    """Any /api/v1 path without a fixture: tier 1 answers it when enabled.
+
+    Registered after every fixture route, so known endpoints keep their tier 0 answer.
+    """
+
+    def static_404() -> GeneratedResponse:
+        return GeneratedResponse(
+            status_code=404,
+            headers={"content-type": "text/html"},
+            body=nginx_404_page(FAKE_API_PERSONA),
+        )
+
+    engine: ResponseEngine | None = request.app.state.engine
+    captured = request.scope.get(REQUEST_SCOPE_KEY)
+    if engine is None or captured is None:
+        generated = static_404()
+    else:
+        result = await engine.respond(captured, persona_prompt=FAKE_API_PROMPT, fallback=static_404)
+        request.scope[TIER_SCOPE_KEY] = result.tier
+        request.scope[TOKENS_SCOPE_KEY] = result.tokens_used
+        generated = result.response
+    return Response(
+        content=generated.body, status_code=generated.status_code, headers=generated.headers
     )
 
 

@@ -24,16 +24,16 @@ from starlette.routing import Match
 
 from app.config import Settings
 from app.main import create_app
-from app.personas import catch_all
+from app.personas import catch_all, fake_api
 from domain.db import create_engine
 
 
 def is_covered(app: FastAPI, method: str, path: str) -> bool:
-    """True if a route other than the catch-all would handle this request."""
+    """True if a template route (not a catch-all or a model-backed one) handles this request."""
     scope = {"type": "http", "method": method.upper(), "path": path, "root_path": ""}
-    # Each persona is mounted with include_router; the catch-all one is skipped.
+    # Each persona is mounted with include_router; the catch-all and model-backed ones are skipped.
     for route in app.routes:
-        if getattr(route, "original_router", None) is catch_all.router:
+        if getattr(route, "original_router", None) in (catch_all.router, fake_api.model_router):
             continue
         if route.matches(scope)[0] == Match.FULL:
             return True

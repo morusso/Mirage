@@ -18,6 +18,8 @@ MAX_BODY_READ_BYTES = 32 * 1024 * 1024
 # The response engine reports how a request was answered through the ASGI scope.
 TIER_SCOPE_KEY = "mirage.tier"
 TOKENS_SCOPE_KEY = "mirage.tokens_used"
+# The captured request, so a handler can hand the engine what the attacker really sent.
+REQUEST_SCOPE_KEY = "mirage.request"
 
 Sink = Callable[[CapturedRequest], Awaitable[None]]
 
@@ -176,6 +178,7 @@ class CaptureMiddleware:
 
         body = await _read_body(receive, self.max_body_excerpt, self.max_body_read)
         captured = _build(scope, body, self.trusted_proxies)
+        scope[REQUEST_SCOPE_KEY] = captured
 
         # Latency is measured from here, so slow clients uploading a body do not inflate it.
         started = time.perf_counter()
