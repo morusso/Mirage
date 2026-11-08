@@ -1,0 +1,83 @@
+// Upsert partii skanów od Xray Match
+query xray_scans verb=POST {
+  api_group = "xray"
+  auth = "user"
+
+  input {
+    uuid installation_id
+    object[] entries {
+      schema {
+        int local_id
+        text barcode?
+        decimal scanned_at?
+        int used?
+        text source?
+        text device_id?
+        text client_id?
+        text app_version?
+        uuid? scan_uuid?
+      }
+    }
+  }
+
+  stack {
+    var $saved {
+      value = 0
+    }
+
+    foreach ($input.entries) {
+      each as $e {
+        db.query xray_scans {
+          where = $db.xray_scans.installation_id == $input.installation_id && $db.xray_scans.local_id == $e.local_id
+          return = {type: "single"}
+        } as $existing
+
+        conditional {
+          if ($existing != null) {
+            db.edit xray_scans {
+              field_name = "id"
+              field_value = $existing.id
+              data = {
+                barcode    : $e.barcode
+                scanned_at : $e.scanned_at
+                used       : $e.used
+                source     : $e.source
+                device_id  : $e.device_id
+                client_id  : $e.client_id
+                app_version: $e.app_version
+                received_at: now
+                scan_uuid  : $e.scan_uuid
+              }
+            } as $updated_scan
+          }
+
+          else {
+            db.add xray_scans {
+              data = {
+                installation_id: $input.installation_id
+                local_id       : $e.local_id
+                barcode        : $e.barcode
+                scanned_at     : $e.scanned_at
+                used           : $e.used
+                source         : $e.source
+                device_id      : $e.device_id
+                client_id      : $e.client_id
+                app_version    : $e.app_version
+                received_at    : now
+                scan_uuid      : $e.scan_uuid
+              }
+            } as $new_scan
+          }
+        }
+
+        var.update $saved {
+          value = $saved + 1
+        }
+      }
+    }
+  }
+
+  response = {saved: $saved}
+  guid = "KUe8T_9RvtK1T2g6uqUfZiPxhhM"
+}
+

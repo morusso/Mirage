@@ -28,6 +28,7 @@ package = false
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.170.15",
     "mypy>=2.4.1",
     "pre-commit>=4.7.0",
     "pytest>=9.2.0",

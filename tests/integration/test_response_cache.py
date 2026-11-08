@@ -1,15 +1,16 @@
 import pytest
 from redis.asyncio import Redis
 
-from app.engine.cache import KEY_PREFIX, CachedResponse, ResponseCache
+from app.engine.cache import KEY_PREFIX, ResponseCache
+from app.engine.response import GeneratedResponse
 
 pytestmark = pytest.mark.integration
 
 SIG = "ab" * 32
 
 
-def _response() -> CachedResponse:
-    return CachedResponse(status_code=200, headers={"content-type": "text/plain"}, body="hi")
+def _response() -> GeneratedResponse:
+    return GeneratedResponse(status_code=200, headers={"content-type": "text/plain"}, body="hi")
 
 
 async def test_set_then_get_round_trips(redis: Redis) -> None:

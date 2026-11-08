@@ -1,22 +1,16 @@
 import asyncio
 
 import structlog
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
+
+from app.engine.response import GeneratedResponse
 
 logger = structlog.get_logger()
 
 KEY_PREFIX = "mirage:cache:t0:"
 DEFAULT_TTL_S = 24 * 3600
-
-
-class CachedResponse(BaseModel):
-    """A response ready to replay. Bounds match what the engine will generate."""
-
-    status_code: int = Field(ge=100, le=599)
-    headers: dict[str, str] = {}
-    body: str = Field(max_length=64_000)
 
 
 class ResponseCache:
@@ -35,7 +29,7 @@ class ResponseCache:
     def _key(signature: str) -> str:
         return KEY_PREFIX + signature
 
-    async def get(self, signature: str) -> CachedResponse | None:
+    async def get(self, signature: str) -> GeneratedResponse | None:
         try:
             async with asyncio.timeout(self.timeout_s):
                 raw = await self.redis.get(self._key(signature))
@@ -45,7 +39,7 @@ class ResponseCache:
         if raw is None:
             return None
         try:
-            return CachedResponse.model_validate_json(raw)
+            return GeneratedResponse.model_validate_json(raw)
         except ValidationError:
             logger.warning("response_cache_entry_invalid")
             return None
@@ -58,7 +52,7 @@ class ResponseCache:
             logger.warning("response_cache_has_failed", error=type(exc).__name__)
             return False
 
-    async def set(self, signature: str, response: CachedResponse) -> bool:
+    async def set(self, signature: str, response: GeneratedResponse) -> bool:
         """Store a response; returns False if it could not be written."""
         try:
             async with asyncio.timeout(self.timeout_s):
