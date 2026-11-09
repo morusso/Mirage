@@ -16,22 +16,28 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qsl
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.engine.signature import normalize_path
 from app.engine.world_data import (
     PRODUCT_COUNT,
     USER_COUNT,
+    WorldProduct,
+    WorldUser,
     base_product,
     base_user,
+    generate_product,
+    generate_user,
 )
-from app.engine.world_delta import DELETED, DeltaStore
+from app.engine.world_delta import DELETED, DeltaStore, WorldFull
+from app.engine.world_updates import StateUpdate
 from domain.captured_request import CapturedRequest
 
 # Bounds on what an attacker can make us look up or put into a prompt.
 MAX_REFERENCED_IDS = 10
 SAMPLE_SIZE = 3
 MAX_ID_DIGITS = 9
+MAX_ID_PROBES = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,12 +46,16 @@ class Kind:
     singular: str  # as it appears in parameter names: user_id, userId
     base_count: int
     base: Callable[[str, int], BaseModel | None]
+    model: type[BaseModel]
+    # What the seed makes of any id; fills in the fields a created object lacks.
+    generate: Callable[[str, int], BaseModel]
 
 
 KINDS = (
-    Kind("users", "user", USER_COUNT, base_user),
-    Kind("products", "product", PRODUCT_COUNT, base_product),
+    Kind("users", "user", USER_COUNT, base_user, WorldUser, generate_user),
+    Kind("products", "product", PRODUCT_COUNT, base_product, WorldProduct, generate_product),
 )
+_KINDS_BY_NAME = {k.name: k for k in KINDS}
 
 
 def _to_id(value: object) -> int | None:
@@ -109,6 +119,13 @@ def referenced_ids(request: CapturedRequest) -> dict[str, list[int]]:
     return result
 
 
+@dataclass(frozen=True, slots=True)
+class ApplyResult:
+    applied: int
+    # One short reason per update that was not applied. Never quotes model output.
+    rejected: tuple[str, ...] = ()
+
+
 class WorldState:
     def __init__(self, delta: DeltaStore) -> None:
         self.delta = delta
@@ -165,3 +182,62 @@ class WorldState:
         existing = base_ids + created
         sample = [self._resolve(world_id, kind, i, touched.get(i)) for i in existing[:SAMPLE_SIZE]]
         return {"total": len(existing), "sample": sample}
+
+    async def apply(self, world_id: str, updates: list[StateUpdate]) -> ApplyResult:
+        """Apply validated updates in order, skipping any that do not fit the world.
+
+        A rejected update (unknown field, bad value, update of a missing object, create
+        of an existing id, world full) leaves the world as it was and does not stop the
+        rest. Raises ``WorldStateUnavailable`` if Redis is down.
+        """
+        applied = 0
+        rejected: list[str] = []
+        for update in updates:
+            reason = await self._apply_one(world_id, update)
+            if reason is None:
+                applied += 1
+            else:
+                rejected.append(reason)
+        return ApplyResult(applied, tuple(rejected))
+
+    async def _free_id(self, world_id: str, kind: Kind) -> int:
+        """Next id from the counter that no object holds yet (an earlier create may have
+        chosen it explicitly)."""
+        for _ in range(MAX_ID_PROBES):
+            object_id = await self.delta.next_id(world_id, kind.name)
+            if await self._object(world_id, kind, object_id) is None:
+                return object_id
+        return object_id
+
+    async def _apply_one(self, world_id: str, update: StateUpdate) -> str | None:
+        kind = _KINDS_BY_NAME[update.kind]
+        allowed = set(kind.model.model_fields) - {"id"}
+        if not set(update.fields) <= allowed:
+            return f"{update.op} {kind.name}: unknown field"
+
+        if update.op == "create":
+            object_id = update.id or await self._free_id(world_id, kind)
+            if await self._object(world_id, kind, object_id) is not None:
+                return f"create {kind.name}: id exists"
+            # The seed supplies what the model left out, so every created object is whole.
+            current = kind.generate(world_id, object_id).model_dump()
+        else:
+            if update.id is None:  # StateUpdate rejects this; kept as a guard, not a crash
+                return f"{update.op} {kind.name}: id missing"
+            object_id = update.id
+            existing = await self._object(world_id, kind, object_id)
+            if existing is None:
+                return f"{update.op} {kind.name}: no such object"
+            if update.op == "delete":
+                await self.delta.delete(world_id, kind.name, object_id)
+                return None
+            current = existing
+
+        try:
+            merged = kind.model.model_validate({**current, **update.fields, "id": object_id})
+            await self.delta.put(world_id, kind.name, object_id, merged.model_dump())
+        except ValidationError:
+            return f"{update.op} {kind.name}: invalid value"
+        except (ValueError, WorldFull) as exc:
+            return f"{update.op} {kind.name}: {type(exc).__name__}"
+        return None

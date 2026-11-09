@@ -79,8 +79,14 @@ def _role(user_id: int) -> str:
 
 def base_user(world_id: str, user_id: int) -> WorldUser | None:
     """User ``user_id`` of the base world, or None if that id is not part of it."""
-    if not 1 <= user_id <= USER_COUNT:
-        return None
+    return generate_user(world_id, user_id) if 1 <= user_id <= USER_COUNT else None
+
+
+def generate_user(world_id: str, user_id: int) -> WorldUser:
+    """The user the seed produces for any id, in or out of the base world.
+
+    Also supplies the fields of a user the attacker creates without giving them all.
+    """
     fake = seeded(world_id, namespace=f"user:{user_id}")
     first, last = fake.first_name(), fake.last_name()
     created = fake.date_time_between(_USERS_SINCE, _USERS_UNTIL, tzinfo=UTC)
@@ -103,8 +109,11 @@ def base_user(world_id: str, user_id: int) -> WorldUser | None:
 
 def base_product(world_id: str, product_id: int) -> WorldProduct | None:
     """Product ``product_id`` of the base world, or None if that id is not part of it."""
-    if not 1 <= product_id <= PRODUCT_COUNT:
-        return None
+    return generate_product(world_id, product_id) if 1 <= product_id <= PRODUCT_COUNT else None
+
+
+def generate_product(world_id: str, product_id: int) -> WorldProduct:
+    """The product the seed produces for any id, in or out of the base world."""
     fake = seeded(world_id, namespace=f"product:{product_id}")
     category = fake.random_element(tuple(_NOUNS))
     name = f"{fake.random_element(_ADJECTIVES)} {fake.random_element(_NOUNS[category])}"
