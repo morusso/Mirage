@@ -29,7 +29,7 @@ from app.engine.world_data import (
     generate_product,
     generate_user,
 )
-from app.engine.world_delta import DELETED, DeltaStore, WorldFull
+from app.engine.world_delta import DELETED, FIRST_NEW_ID, DeltaStore, WorldFull
 from app.engine.world_updates import StateUpdate
 from domain.captured_request import CapturedRequest
 
@@ -181,7 +181,20 @@ class WorldState:
         )
         existing = base_ids + created
         sample = [self._resolve(world_id, kind, i, touched.get(i)) for i in existing[:SAMPLE_SIZE]]
-        return {"total": len(existing), "sample": sample}
+        return {
+            "total": len(existing),
+            "sample": sample,
+            "next_id": await self._next_free_id(world_id, kind),
+        }
+
+    async def _next_free_id(self, world_id: str, kind: Kind) -> int:
+        """The id ``create`` will give a new object, without using it up."""
+        candidate = FIRST_NEW_ID + await self.delta.peek_seq(world_id, kind.name)
+        for _ in range(MAX_ID_PROBES):
+            if await self._object(world_id, kind, candidate) is None:
+                break
+            candidate += 1
+        return candidate
 
     async def apply(self, world_id: str, updates: list[StateUpdate]) -> ApplyResult:
         """Apply validated updates in order, skipping any that do not fit the world.

@@ -109,6 +109,12 @@ class DeltaStore:
         count = await self._call(self._increment(key, kind))
         return FIRST_NEW_ID + int(count) - 1
 
+    async def peek_seq(self, world_id: str, kind: str) -> int:
+        """How many ids ``next_id`` has handed out so far for this world and kind."""
+        _check_kind(kind)
+        raw = await self._call(self.redis.hget(f"{KEY_PREFIX}{world_id}#seq", kind))
+        return int(raw) if raw is not None else 0
+
     async def _increment(self, key: str, kind: str) -> int:
         count = await self.redis.hincrby(key, kind, 1)
         await self.redis.expire(key, self.ttl_s)

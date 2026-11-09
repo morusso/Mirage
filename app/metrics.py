@@ -35,9 +35,13 @@ FALLBACKS = Counter(
 )
 
 
+def observe_fallback() -> None:
+    FALLBACKS.inc()
+
+
 def observe_llm_failure(reason: str) -> None:
     LLM_FAILURES.labels(reason=reason).inc()
-    FALLBACKS.inc()
+    observe_fallback()
 
 
 def observe_request(*, persona: str, tier: int, status: int | None, duration_s: float) -> None:

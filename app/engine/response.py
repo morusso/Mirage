@@ -54,6 +54,9 @@ class GeneratedResponse(BaseModel):
     status_code: int = Field(ge=200, le=599)
     headers: dict[str, str] = Field(default_factory=dict)
     body: str = Field(default="", max_length=MAX_BODY_CHARS)
+    # Changes to the fake world the model proposes. Raw and unvalidated here: the engine
+    # parses them with ``parse_updates``. Never serialized, so it never reaches the cache.
+    state_updates: Any = Field(default=None, exclude=True, repr=False)
 
     @field_validator("headers", mode="before")
     @classmethod

@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from ipaddress import ip_address
 from uuid import uuid4
@@ -15,6 +16,9 @@ from app.engine.llm_client import (
 )
 from app.engine.response import GeneratedResponse
 from app.engine.signature import request_signature
+from app.engine.world import ApplyResult
+from app.engine.world_delta import WorldStateUnavailable
+from app.engine.world_updates import StateUpdate
 from domain.captured_request import CapturedRequest
 
 PROMPT = "You are a test service."
@@ -253,3 +257,127 @@ async def test_rejected_model_output_still_settles_the_tokens_it_used() -> None:
 
     assert result.source is Source.FALLBACK
     assert budget.settled[0][1] == 2
+
+
+class StubWorld:
+    def __init__(self, snapshot: dict[str, object] | None = None, *, down: bool = False) -> None:
+        self.snapshot = snapshot or {}
+        self.down = down
+        self.applied: list[list[StateUpdate]] = []
+
+    async def snapshot_for(self, world_id: str, request: CapturedRequest) -> dict[str, object]:
+        if self.down:
+            raise WorldStateUnavailable("ConnectionError")
+        return self.snapshot
+
+    async def apply(self, world_id: str, updates: list[StateUpdate]) -> ApplyResult:
+        if self.down:
+            raise WorldStateUnavailable("ConnectionError")
+        self.applied.append(updates)
+        return ApplyResult(len(updates))
+
+
+CREATE = {"op": "create", "kind": "users", "id": 1001, "fields": {"email": "a@example.com"}}
+
+
+def _model_json(**extra: object) -> str:
+    return json.dumps({"status_code": 201, "headers": {}, "body": "{}", **extra})
+
+
+async def test_snapshot_reaches_the_prompt() -> None:
+    model = StubModel(MODEL_JSON)
+    world = StubWorld({"users": {"requested": {"7": None}}})
+    engine = ResponseEngine(cache=MemoryCache(), model=model, world=world)
+
+    await _respond(engine, _req())
+
+    assert '"requested":{"7":null}' in model.calls[0][1].content
+
+
+async def test_world_independent_answer_is_cached() -> None:
+    cache = MemoryCache()
+    engine = ResponseEngine(cache=cache, model=StubModel(MODEL_JSON), world=StubWorld())
+
+    await _respond(engine, _req())
+
+    assert len(cache.items) == 1
+
+
+async def test_answer_that_used_the_world_is_not_cached() -> None:
+    cache = MemoryCache()
+    world = StubWorld({"users": {"requested": {"7": None}}})
+    engine = ResponseEngine(cache=cache, model=StubModel(MODEL_JSON), world=world)
+
+    await _respond(engine, _req())
+
+    assert cache.items == {}
+
+
+async def test_state_updates_are_validated_applied_and_stop_caching() -> None:
+    cache, world = MemoryCache(), StubWorld()
+    reply = _model_json(state_updates=[CREATE, {"op": "explode"}, "junk"])
+    engine = ResponseEngine(cache=cache, model=StubModel(reply), world=world)
+
+    result = await engine.respond(_req(), persona_prompt=PROMPT, fallback=lambda: FALLBACK)
+
+    assert result.source is Source.MODEL
+    assert [[u.op for u in batch] for batch in world.applied] == [["create"]]
+    assert cache.items == {}
+
+
+async def test_updates_are_never_applied_without_a_world() -> None:
+    cache = MemoryCache()
+    engine = ResponseEngine(cache=cache, model=StubModel(_model_json(state_updates=[CREATE])))
+
+    await _respond(engine, _req())
+
+    assert len(cache.items) == 1  # nothing to apply them to, so it behaves as before
+
+
+async def test_state_updates_do_not_leak_into_the_cache() -> None:
+    cache = MemoryCache()
+    engine = ResponseEngine(
+        cache=cache, model=StubModel(_model_json(state_updates=[])), world=StubWorld()
+    )
+
+    await _respond(engine, _req())
+
+    (cached,) = cache.items.values()
+    assert "state_updates" not in cached.model_dump_json()
+
+
+async def test_garbage_state_updates_are_ignored() -> None:
+    world = StubWorld()
+    engine = ResponseEngine(
+        cache=MemoryCache(), model=StubModel(_model_json(state_updates="drop all")), world=world
+    )
+
+    assert (await _respond(engine, _req()))[0] is Source.MODEL
+    assert world.applied == []
+
+
+async def test_world_down_before_the_call_falls_back_without_asking_the_model() -> None:
+    fallbacks = _fallbacks()
+    model = StubModel(MODEL_JSON)
+    engine = ResponseEngine(cache=MemoryCache(), model=model, world=StubWorld(down=True))
+
+    assert await _respond(engine, _req()) == (Source.FALLBACK, 404, "nope")
+    assert model.calls == []
+    assert _fallbacks() == fallbacks + 1
+
+
+async def test_world_down_after_the_call_still_serves_the_answer() -> None:
+    class FlakyWorld(StubWorld):
+        async def snapshot_for(self, world_id: str, request: CapturedRequest) -> dict[str, object]:
+            return {}
+
+    cache = MemoryCache()
+    world = FlakyWorld(down=True)
+    engine = ResponseEngine(
+        cache=cache, model=StubModel(_model_json(state_updates=[CREATE])), world=world
+    )
+
+    result = await engine.respond(_req(), persona_prompt=PROMPT, fallback=lambda: FALLBACK)
+
+    assert (result.source, result.response.status_code) == (Source.MODEL, 201)
+    assert cache.items == {}

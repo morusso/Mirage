@@ -9,7 +9,7 @@ from redis.asyncio import Redis
 
 from app.engine.world import SAMPLE_SIZE, WorldState
 from app.engine.world_data import USER_COUNT, base_user
-from app.engine.world_delta import DeltaStore, WorldStateUnavailable
+from app.engine.world_delta import FIRST_NEW_ID, DeltaStore, WorldStateUnavailable
 from domain.captured_request import CapturedRequest
 
 pytestmark = pytest.mark.integration
@@ -106,7 +106,7 @@ async def test_only_relevant_kinds_appear(world: WorldState) -> None:
     snapshot = await world.snapshot_for(W, _req("/api/v1/products/3"))
 
     assert set(snapshot) == {"products"}
-    assert set(snapshot["products"]) == {"requested", "total", "sample"}
+    assert set(snapshot["products"]) == {"requested", "total", "sample", "next_id"}
 
 
 async def test_unrelated_request_has_an_empty_snapshot(world: WorldState) -> None:
@@ -135,3 +135,25 @@ async def test_unreachable_redis_raises() -> None:
     with pytest.raises(WorldStateUnavailable):
         await WorldState(DeltaStore(dead)).snapshot_for(W, _req("/api/v1/users/1"))
     await dead.aclose()
+
+
+async def test_next_id_starts_after_the_base_ids_and_skips_taken_ones(
+    world: WorldState, delta: DeltaStore
+) -> None:
+    def next_id(snapshot: dict[str, object]) -> object:
+        return snapshot["users"]["next_id"]  # type: ignore[index]
+
+    assert next_id(await world.snapshot_for(W, _req("/api/v1/users"))) == FIRST_NEW_ID
+
+    await delta.put(W, "users", FIRST_NEW_ID, {"id": FIRST_NEW_ID})  # chosen explicitly
+    assert next_id(await world.snapshot_for(W, _req("/api/v1/users"))) == FIRST_NEW_ID + 1
+
+    await delta.next_id(W, "users")  # the counter handed out FIRST_NEW_ID
+    assert next_id(await world.snapshot_for(W, _req("/api/v1/users"))) == FIRST_NEW_ID + 1
+
+
+async def test_peeking_the_next_id_does_not_use_it_up(world: WorldState) -> None:
+    for _ in range(3):
+        snapshot = await world.snapshot_for(W, _req("/api/v1/users"))
+
+    assert snapshot["users"]["next_id"] == FIRST_NEW_ID

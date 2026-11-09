@@ -12,6 +12,8 @@ from app.engine.cache import ResponseCache
 from app.engine.engine import ResponseEngine
 from app.engine.llm_client import LLMClient
 from app.engine.llm_settings import LLMSettings
+from app.engine.world import WorldState
+from app.engine.world_delta import DeltaStore
 from app.internal import run_internal_server
 from app.log import configure_logging
 from app.personas import (
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             cache=ResponseCache(redis),
             model=LLMClient(LLMSettings().local),
             budget=BudgetManager(redis),
+            world=WorldState(DeltaStore(redis)),
         )
         if settings.tier1_enabled
         else None

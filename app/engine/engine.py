@@ -3,12 +3,18 @@
 Order of tiers:
 
 0. The response cache, keyed by request signature. Free and instant.
-1. The local model, on a cache miss, if the request's token budget has room. Its answer
-   is validated and cached.
+1. The local model, on a cache miss, if the request's token budget has room. It sees
+   the part of the attacker's world the request is about, and its answer is validated.
+   Changes it proposes to that world are validated again and applied.
 2. If the model fails (timeout, unreachable, unusable output) or the budget has no
    room, the static fallback response the caller supplied, which is what the honeypot
    answered before it had a model. Neither is cached, so the next request tries again.
    Going over budget is never an error page or a 429: the attacker just gets tier 0.
+
+An answer is cached only if it did not depend on the world: nothing in the world was
+relevant to the request and the model changed nothing. Otherwise a cached answer could
+outlive the object it described (a GET cached as "not found" before the attacker
+creates the object) or leak from one attacker's world into another's.
 
 ``respond`` never raises for model or cache problems: an attacker must not be able to
 turn a flaky model into an error page that gives the honeypot away.
@@ -17,7 +23,7 @@ turn a flaky model into an error page that gives the honeypot away.
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Protocol
 
 import structlog
 from pydantic import ValidationError
@@ -34,7 +40,10 @@ from app.engine.llm_client import (
 from app.engine.prompts.builder import build_messages
 from app.engine.response import GeneratedResponse
 from app.engine.signature import request_signature
-from app.metrics import observe_llm_failure
+from app.engine.world import ApplyResult
+from app.engine.world_delta import WorldStateUnavailable
+from app.engine.world_updates import StateUpdate, parse_updates
+from app.metrics import observe_fallback, observe_llm_failure
 from domain.captured_request import CapturedRequest
 
 logger = structlog.get_logger()
@@ -87,14 +96,26 @@ class BudgetLike(Protocol):
     ) -> None: ...
 
 
+class WorldLike(Protocol):
+    async def snapshot_for(self, world_id: str, request: CapturedRequest) -> dict[str, Any]: ...
+    async def apply(self, world_id: str, updates: list[StateUpdate]) -> ApplyResult: ...
+
+
 class ResponseEngine:
     def __init__(
-        self, *, cache: CacheLike, model: ModelLike, budget: BudgetLike | None = None
+        self,
+        *,
+        cache: CacheLike,
+        model: ModelLike,
+        budget: BudgetLike | None = None,
+        world: WorldLike | None = None,
     ) -> None:
         self.cache = cache
         self.model = model
         # None means no limit; production wires a BudgetManager.
         self.budget = budget
+        # None means no per-attacker world: answers do not depend on earlier requests.
+        self.world = world
 
     async def respond(
         self,
@@ -109,7 +130,19 @@ class ResponseEngine:
         if cached is not None:
             return EngineResult(cached, Source.CACHE)
 
-        messages = build_messages(persona_prompt=persona_prompt, request=request)
+        try:
+            snapshot = (
+                await self.world.snapshot_for(request.world_id, request) if self.world else {}
+            )
+        except WorldStateUnavailable as exc:
+            # Without the world the model could contradict what the attacker saw.
+            observe_fallback()
+            logger.warning("world_unavailable", error=str(exc))
+            return EngineResult(fallback(), Source.FALLBACK)
+
+        messages = build_messages(
+            persona_prompt=persona_prompt, request=request, world=snapshot or None
+        )
         estimated = estimate_tokens(messages, RESPONSE_MAX_TOKENS)
         if self.budget is not None and not await self.budget.allow(request, TIER1, estimated):
             return EngineResult(fallback(), Source.OVER_BUDGET)
@@ -118,8 +151,30 @@ class ResponseEngine:
         if generated is None:
             return EngineResult(fallback(), Source.FALLBACK, tokens)
 
-        await self.cache.set(signature, generated)
+        changed = await self._apply_updates(request, generated)
+        if not snapshot and not changed:
+            await self.cache.set(signature, generated)
         return EngineResult(generated, Source.MODEL, tokens)
+
+    async def _apply_updates(self, request: CapturedRequest, generated: GeneratedResponse) -> bool:
+        """Apply the model's proposed world changes; True if the model proposed any.
+
+        The answer is served either way: if the world cannot be written, the attacker
+        gets a plausible answer and the next request will not find the change.
+        """
+        if self.world is None:
+            return False
+        updates = parse_updates(generated.state_updates)
+        if not updates:
+            return False
+        try:
+            result = await self.world.apply(request.world_id, updates)
+        except WorldStateUnavailable as exc:
+            logger.warning("world_update_failed", error=str(exc))
+        else:
+            if result.rejected:
+                logger.info("world_updates_rejected", reasons=list(result.rejected))
+        return True
 
     async def _generate(
         self, request: CapturedRequest, messages: list[Message], estimated: int
