@@ -34,6 +34,7 @@ async def tier1_client(
         )
     )
     async with app.router.lifespan_context(app):
+        app.state.engine.budget = None  # budgets need a live Redis; they are tested elsewhere
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
             yield c

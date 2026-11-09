@@ -11,8 +11,9 @@ from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv6Address
 from typing import Protocol
 
+from domain.network import subnet_of
 from workers.enrichment.abuseipdb import Reputation
-from workers.enrichment.asn import AsnLookup, subnet_of
+from workers.enrichment.asn import AsnLookup
 from workers.enrichment.geo import GeoIPLookup
 
 

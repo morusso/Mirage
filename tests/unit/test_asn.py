@@ -6,7 +6,8 @@ import maxminddb
 import pytest
 
 from app.config import Settings
-from workers.enrichment.asn import AsnLookup, AsnResult, subnet_of
+from domain.network import subnet_of
+from workers.enrichment.asn import AsnLookup, AsnResult
 
 TEST_DB = Path(__file__).parent.parent / "data" / "GeoLite2-ASN-Test.mmdb"
 

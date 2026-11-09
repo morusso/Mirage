@@ -167,3 +167,89 @@ async def test_prompt_carries_the_persona_and_the_request() -> None:
     system, user = model.calls[0]
     assert PROMPT in system.content
     assert "/api/v1/orders/7" in user.content
+
+
+class StubBudget:
+    def __init__(self, *, allow: bool = True) -> None:
+        self.permit = allow
+        self.charged: list[int] = []
+        self.settled: list[tuple[int, int]] = []
+
+    async def allow(self, request: CapturedRequest, tier: int, est_tokens: int = 300) -> bool:
+        self.charged.append(est_tokens)
+        return self.permit
+
+    async def settle(
+        self, request: CapturedRequest, tier: int, *, estimated: int, actual: int
+    ) -> None:
+        self.settled.append((estimated, actual))
+
+
+async def test_over_budget_skips_the_model_and_serves_the_fallback() -> None:
+    model, budget = StubModel(MODEL_JSON), StubBudget(allow=False)
+    cache = MemoryCache()
+    engine = ResponseEngine(cache=cache, model=model, budget=budget)
+
+    result = await engine.respond(_req(), persona_prompt=PROMPT, fallback=lambda: FALLBACK)
+
+    assert (result.source, result.tier, result.response) == (Source.OVER_BUDGET, 0, FALLBACK)
+    assert model.calls == []
+    assert cache.items == {}
+    assert budget.settled == []
+
+
+async def test_over_budget_is_not_counted_as_a_model_failure() -> None:
+    failures, fallbacks = _failures("timeout"), _fallbacks()
+    engine = ResponseEngine(cache=MemoryCache(), model=StubModel(), budget=StubBudget(allow=False))
+
+    await _respond(engine, _req())
+
+    assert (_failures("timeout"), _fallbacks()) == (failures, fallbacks)
+
+
+async def test_cache_hit_costs_no_budget() -> None:
+    cache, budget = MemoryCache(), StubBudget()
+    engine = ResponseEngine(cache=cache, model=StubModel(MODEL_JSON), budget=budget)
+    await _respond(engine, _req())
+    budget.charged.clear()
+
+    assert (await _respond(engine, _req()))[0] is Source.CACHE
+    assert budget.charged == []
+
+
+async def test_estimate_is_corrected_to_real_usage_after_the_call() -> None:
+    budget = StubBudget()
+    engine = ResponseEngine(cache=MemoryCache(), model=StubModel(MODEL_JSON), budget=budget)
+
+    result = await engine.respond(_req(), persona_prompt=PROMPT, fallback=lambda: FALLBACK)
+
+    (estimated,) = budget.charged
+    assert estimated > 512  # worst case: prompt plus the whole completion allowance
+    assert budget.settled == [(estimated, 2)]  # the stub model reports 1 + 1 tokens
+    assert result.tokens_used == 2
+
+
+@pytest.mark.parametrize(
+    ("outcome", "refunded"),
+    [(LLMUnavailable("down"), True), (LLMTimeout("slow"), False)],
+)
+async def test_failed_call_is_refunded_only_if_the_model_was_never_reached(
+    outcome: Exception, refunded: bool
+) -> None:
+    budget = StubBudget()
+    engine = ResponseEngine(cache=MemoryCache(), model=StubModel(outcome), budget=budget)
+
+    await _respond(engine, _req())
+
+    (estimated,) = budget.charged
+    assert budget.settled == ([(estimated, 0)] if refunded else [])
+
+
+async def test_rejected_model_output_still_settles_the_tokens_it_used() -> None:
+    budget = StubBudget()
+    engine = ResponseEngine(cache=MemoryCache(), model=StubModel("not json"), budget=budget)
+
+    result = await engine.respond(_req(), persona_prompt=PROMPT, fallback=lambda: FALLBACK)
+
+    assert result.source is Source.FALLBACK
+    assert budget.settled[0][1] == 2

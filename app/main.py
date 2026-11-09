@@ -7,6 +7,7 @@ from redis.asyncio import Redis
 from app.capture.middleware import CaptureMiddleware, Sink
 from app.capture.publisher import StreamPublisher
 from app.config import Settings
+from app.engine.budget import BudgetManager
 from app.engine.cache import ResponseCache
 from app.engine.engine import ResponseEngine
 from app.engine.llm_client import LLMClient
@@ -39,7 +40,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     # None means tier 1 is off: personas answer from tier 0 only.
     app.state.engine = (
-        ResponseEngine(cache=ResponseCache(redis), model=LLMClient(LLMSettings().local))
+        ResponseEngine(
+            cache=ResponseCache(redis),
+            model=LLMClient(LLMSettings().local),
+            budget=BudgetManager(redis),
+        )
         if settings.tier1_enabled
         else None
     )
