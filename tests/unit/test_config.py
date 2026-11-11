@@ -20,6 +20,7 @@ def test_defaults() -> None:
 
 def test_reads_values_with_mirage_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MIRAGE_ENVIRONMENT", "prod")
+    monkeypatch.setenv("MIRAGE_CANARY_KEY", "k" * 32)
     monkeypatch.setenv("MIRAGE_LOG_LEVEL", "DEBUG")
 
     settings = Settings()
@@ -70,3 +71,17 @@ def test_tier1_flag_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("MIRAGE_TIER1_ENABLED", "true")
 
     assert Settings().tier1_enabled is True
+
+
+def test_prod_refuses_the_public_default_canary_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MIRAGE_ENVIRONMENT", "prod")
+
+    with pytest.raises(ValidationError, match="MIRAGE_CANARY_KEY"):
+        Settings()
+
+
+def test_prod_accepts_a_private_canary_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MIRAGE_ENVIRONMENT", "prod")
+    monkeypatch.setenv("MIRAGE_CANARY_KEY", "k" * 32)
+
+    assert Settings().canary_key.get_secret_value() == "k" * 32

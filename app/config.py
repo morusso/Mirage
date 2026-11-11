@@ -1,9 +1,11 @@
 from ipaddress import IPv4Network, IPv6Network
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_CANARY_KEY = "dev-only-canary-key-change-me"
 
 
 class Settings(BaseSettings):
@@ -46,5 +48,17 @@ class Settings(BaseSettings):
     # AbuseIPDB API key. Enrichment skips IP reputation while unset.
     abuseipdb_api_key: SecretStr | None = None
 
+    # Server-side key the canary tokens of every world are derived from (see
+    # app.engine.canary). Whoever holds it can compute any world's tokens: keep it secret,
+    # and set it in prod (the dev default is public in this repository). Changing it
+    # invalidates every token already handed out.
+    canary_key: SecretStr = SecretStr(DEV_CANARY_KEY)
+
     # Used by workers and the analytics API; the request path never touches Postgres.
     database_url: SecretStr = SecretStr("postgresql+asyncpg://mirage:mirage@localhost:5432/mirage")
+
+    @model_validator(mode="after")
+    def _require_private_canary_key_in_prod(self) -> Self:
+        if self.environment == "prod" and self.canary_key.get_secret_value() == DEV_CANARY_KEY:
+            raise ValueError("MIRAGE_CANARY_KEY must be set to a private value in prod")
+        return self

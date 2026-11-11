@@ -205,3 +205,57 @@ async def test_detections_downgrade_drops_table(postgres_url: str) -> None:
     finally:
         await engine.dispose()
     await asyncio.to_thread(command.upgrade, config, "head")
+
+
+async def test_canary_tokens_defaults_and_unique_token(postgres_url: str) -> None:
+    await asyncio.to_thread(command.upgrade, _alembic_config(postgres_url), "head")
+    insert = text(
+        "INSERT INTO canary_tokens (token, world_id, kind) VALUES ('tok-1', 'w', 'api_key')"
+    )
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(insert)
+            row = (
+                await conn.execute(text("SELECT created_at, triggered_at FROM canary_tokens"))
+            ).one()
+            assert row[0] is not None
+            assert row[1] is None
+            with pytest.raises(IntegrityError):
+                await conn.execute(insert)  # token is the primary key
+    finally:
+        await engine.dispose()
+
+
+async def test_canary_tokens_reject_trigger_before_creation(postgres_url: str) -> None:
+    await asyncio.to_thread(command.upgrade, _alembic_config(postgres_url), "head")
+    statement = text(
+        "INSERT INTO canary_tokens (token, world_id, kind, created_at, triggered_at) "
+        "VALUES ('tok-2', 'w', 'api_key', now(), now() - interval '1 hour')"
+    )
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.connect() as conn:
+            with pytest.raises(IntegrityError):
+                await conn.execute(statement)
+    finally:
+        await engine.dispose()
+
+
+async def test_canary_tokens_downgrade_drops_table(postgres_url: str) -> None:
+    config = _alembic_config(postgres_url)
+    await asyncio.to_thread(command.upgrade, config, "head")
+    await asyncio.to_thread(command.downgrade, config, "0004")
+
+    engine = create_async_engine(postgres_url)
+    try:
+        async with engine.connect() as conn:
+            assert await conn.scalar(text("SELECT to_regclass('public.canary_tokens')")) is None
+            assert (
+                await conn.scalar(text("SELECT to_regclass('public.detections')")) == "detections"
+            )
+    finally:
+        await engine.dispose()
+    await asyncio.to_thread(command.upgrade, config, "head")

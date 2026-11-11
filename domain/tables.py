@@ -17,6 +17,7 @@ from sqlalchemy import (
     Table,
     Text,
     Uuid,
+    func,
 )
 from sqlalchemy.dialects.postgresql import CIDR, INET, JSONB
 
@@ -62,6 +63,17 @@ detections = Table(
     Column("category", Text, nullable=False),
     Column("severity", Text, nullable=False),
     Column("matched_excerpt", Text, nullable=False, server_default=""),
+)
+
+# Bait secrets handed out in a fake world (migration 0005). ``triggered_at`` is set on first use.
+canary_tokens = Table(
+    "canary_tokens",
+    metadata,
+    Column("token", Text, primary_key=True),
+    Column("world_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("triggered_at", DateTime(timezone=True)),
 )
 
 # One row per attacker session (migration 0003). Created by the enrichment worker, kept up
