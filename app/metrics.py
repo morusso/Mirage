@@ -26,7 +26,8 @@ LLM_FAILURES = Counter(
     "mirage_llm_failures",
     "Tier 1 model calls that produced no usable answer, by reason: timeout, "
     "unavailable (connection or HTTP error), bad_response (malformed API reply) "
-    "or invalid_output (model text failed GeneratedResponse validation).",
+    "invalid_output (model text failed GeneratedResponse validation) or "
+    "prompt_leak (a valid answer that repeated the system prompt).",
     ["reason"],
 )
 FALLBACKS = Counter(

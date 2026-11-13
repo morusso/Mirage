@@ -196,6 +196,10 @@ class WorldState:
             candidate += 1
         return candidate
 
+    async def version(self, world_id: str) -> int:
+        """Changes whenever an applied update changes the world; see ``DeltaStore.version``."""
+        return await self.delta.version(world_id)
+
     async def apply(self, world_id: str, updates: list[StateUpdate]) -> ApplyResult:
         """Apply validated updates in order, skipping any that do not fit the world.
 
@@ -211,6 +215,8 @@ class WorldState:
                 applied += 1
             else:
                 rejected.append(reason)
+        if applied:
+            await self.delta.bump_version(world_id)
         return ApplyResult(applied, tuple(rejected))
 
     async def _free_id(self, world_id: str, kind: Kind) -> int:

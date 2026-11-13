@@ -264,6 +264,12 @@ class StubWorld:
         self.snapshot = snapshot or {}
         self.down = down
         self.applied: list[list[StateUpdate]] = []
+        self.current_version = 0
+
+    async def version(self, world_id: str) -> int:
+        if self.down:
+            raise WorldStateUnavailable("ConnectionError")
+        return self.current_version
 
     async def snapshot_for(self, world_id: str, request: CapturedRequest) -> dict[str, object]:
         if self.down:
@@ -274,6 +280,7 @@ class StubWorld:
         if self.down:
             raise WorldStateUnavailable("ConnectionError")
         self.applied.append(updates)
+        self.current_version += 1
         return ApplyResult(len(updates))
 
 
@@ -303,14 +310,37 @@ async def test_world_independent_answer_is_cached() -> None:
     assert len(cache.items) == 1
 
 
-async def test_answer_that_used_the_world_is_not_cached() -> None:
-    cache = MemoryCache()
+async def test_answer_that_used_the_world_is_cached_for_that_world() -> None:
+    model = StubModel(MODEL_JSON)
     world = StubWorld({"users": {"requested": {"7": None}}})
-    engine = ResponseEngine(cache=cache, model=StubModel(MODEL_JSON), world=world)
+    engine = ResponseEngine(cache=MemoryCache(), model=model, world=world)
 
-    await _respond(engine, _req())
+    first = await _respond(engine, _req())
+    second = await _respond(engine, _req())
 
-    assert cache.items == {}
+    assert (first[0], second[0]) == (Source.MODEL, Source.CACHE)
+    assert len(model.calls) == 1
+
+
+async def test_worlds_do_not_share_cached_answers() -> None:
+    model = StubModel(MODEL_JSON, MODEL_JSON)
+    engine = ResponseEngine(cache=MemoryCache(), model=model, world=StubWorld())
+    other = _req().model_copy(update={"world_id": "other"})
+
+    assert (await _respond(engine, _req()))[0] is Source.MODEL
+    assert (await _respond(engine, other))[0] is Source.MODEL
+    assert (await _respond(engine, other))[0] is Source.CACHE
+
+
+async def test_a_world_change_makes_earlier_answers_unreachable() -> None:
+    model = StubModel(MODEL_JSON, MODEL_JSON)
+    world = StubWorld()
+    engine = ResponseEngine(cache=MemoryCache(), model=model, world=world)
+
+    assert (await _respond(engine, _req()))[0] is Source.MODEL
+    world.current_version += 1  # e.g. the attacker created an object meanwhile
+    assert (await _respond(engine, _req()))[0] is Source.MODEL
+    assert len(model.calls) == 2
 
 
 async def test_state_updates_are_validated_applied_and_stop_caching() -> None:
@@ -368,6 +398,9 @@ async def test_world_down_before_the_call_falls_back_without_asking_the_model() 
 
 async def test_world_down_after_the_call_still_serves_the_answer() -> None:
     class FlakyWorld(StubWorld):
+        async def version(self, world_id: str) -> int:
+            return 0
+
         async def snapshot_for(self, world_id: str, request: CapturedRequest) -> dict[str, object]:
             return {}
 

@@ -196,3 +196,14 @@ async def test_unreachable_redis_raises() -> None:
     with pytest.raises(WorldStateUnavailable):
         await WorldState(DeltaStore(dead)).apply(W, [_update(op="create", kind="users")])
     await dead.aclose()
+
+
+async def test_version_changes_only_when_an_update_is_applied(world: WorldState) -> None:
+    assert await world.version(W) == 0
+
+    await world.apply(W, [_update(op="update", kind="users", id=99999, fields={"first_name": "x"})])
+    assert await world.version(W) == 0  # rejected: the world is as it was
+
+    await world.apply(W, [_update(op="create", kind="users", fields={"first_name": "x"})])
+    assert await world.version(W) == 1
+    assert await world.version("w_other") == 0

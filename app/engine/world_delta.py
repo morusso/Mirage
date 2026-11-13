@@ -115,6 +115,22 @@ class DeltaStore:
         raw = await self._call(self.redis.hget(f"{KEY_PREFIX}{world_id}#seq", kind))
         return int(raw) if raw is not None else 0
 
+    async def version(self, world_id: str) -> int:
+        """Counter that changes whenever the world's contents do; 0 for an untouched world.
+
+        Answers cached for a world carry the version they were generated under, so a
+        change makes every earlier answer unreachable instead of serving it stale.
+        """
+        raw = await self._call(self.redis.get(f"{KEY_PREFIX}{world_id}#ver"))
+        return int(raw) if raw is not None else 0
+
+    async def bump_version(self, world_id: str) -> None:
+        await self._call(self._incr_with_ttl(f"{KEY_PREFIX}{world_id}#ver"))
+
+    async def _incr_with_ttl(self, key: str) -> None:
+        await self.redis.incr(key)
+        await self.redis.expire(key, self.ttl_s)
+
     async def _increment(self, key: str, kind: str) -> int:
         count = await self.redis.hincrby(key, kind, 1)
         await self.redis.expire(key, self.ttl_s)

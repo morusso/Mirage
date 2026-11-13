@@ -11,10 +11,13 @@ Order of tiers:
    answered before it had a model. Neither is cached, so the next request tries again.
    Going over budget is never an error page or a 429: the attacker just gets tier 0.
 
-An answer is cached only if it did not depend on the world: nothing in the world was
-relevant to the request and the model changed nothing. Otherwise a cached answer could
-outlive the object it described (a GET cached as "not found" before the attacker
-creates the object) or leak from one attacker's world into another's.
+Answers are cached per world: the key holds the world id and the world's version, which
+changes whenever an update is applied. So an attacker gets the same answer to the same
+request (a fingerprinting tell otherwise), nothing leaks between worlds, and an answer
+never outlives the object it described (a GET cached as "not found" is unreachable once
+the attacker creates the object). An answer that itself changed the world is not cached:
+repeating a POST must reach the model again. The version is read before the snapshot, so
+a change made in between only makes the entry unreachable, never stale.
 
 ``respond`` never raises for model or cache problems: an attacker must not be able to
 turn a flaky model into an error page that gives the honeypot away.
@@ -29,6 +32,7 @@ import structlog
 from pydantic import ValidationError
 
 from app.engine.budget import estimate_tokens
+from app.engine.leak_guard import leaks_system_prompt
 from app.engine.llm_client import (
     Completion,
     LLMBadResponse,
@@ -97,6 +101,7 @@ class BudgetLike(Protocol):
 
 
 class WorldLike(Protocol):
+    async def version(self, world_id: str) -> int: ...
     async def snapshot_for(self, world_id: str, request: CapturedRequest) -> dict[str, Any]: ...
     async def apply(self, world_id: str, updates: list[StateUpdate]) -> ApplyResult: ...
 
@@ -124,7 +129,12 @@ class ResponseEngine:
         persona_prompt: str,
         fallback: Callable[[], GeneratedResponse],
     ) -> EngineResult:
-        signature = request_signature(request)
+        try:
+            version = await self.world.version(request.world_id) if self.world else None
+        except WorldStateUnavailable as exc:
+            return self._world_down(fallback, exc)
+        scope = "" if version is None else f"{request.world_id}:{version}"
+        signature = request_signature(request, scope=scope)
 
         cached = await self.cache.get(signature)
         if cached is not None:
@@ -135,10 +145,7 @@ class ResponseEngine:
                 await self.world.snapshot_for(request.world_id, request) if self.world else {}
             )
         except WorldStateUnavailable as exc:
-            # Without the world the model could contradict what the attacker saw.
-            observe_fallback()
-            logger.warning("world_unavailable", error=str(exc))
-            return EngineResult(fallback(), Source.FALLBACK)
+            return self._world_down(fallback, exc)
 
         messages = build_messages(
             persona_prompt=persona_prompt, request=request, world=snapshot or None
@@ -150,11 +157,25 @@ class ResponseEngine:
         generated, tokens = await self._generate(request, messages, estimated)
         if generated is None:
             return EngineResult(fallback(), Source.FALLBACK, tokens)
+        if leaks_system_prompt(messages[0].content, generated):
+            # A successful injection: serve the static answer and never cache this one.
+            observe_llm_failure("prompt_leak")
+            logger.warning("tier1_output_leaks_prompt")
+            return EngineResult(fallback(), Source.FALLBACK, tokens)
 
         changed = await self._apply_updates(request, generated)
-        if not snapshot and not changed:
+        if not changed:
             await self.cache.set(signature, generated)
         return EngineResult(generated, Source.MODEL, tokens)
+
+    @staticmethod
+    def _world_down(
+        fallback: Callable[[], GeneratedResponse], exc: WorldStateUnavailable
+    ) -> EngineResult:
+        # Without the world the model could contradict what the attacker saw.
+        observe_fallback()
+        logger.warning("world_unavailable", error=str(exc))
+        return EngineResult(fallback(), Source.FALLBACK)
 
     async def _apply_updates(self, request: CapturedRequest, generated: GeneratedResponse) -> bool:
         """Apply the model's proposed world changes; True if the model proposed any.
